@@ -132,6 +132,35 @@ var ASSET_AUTOMATION = {
   FINAL_URL_EXPANSION_TEXT_ASSET_AUTOMATION: 'Final URL expansion text'
 };
 
+/**
+ * A complete asset-automation panel for a campaign. Google returns a status for
+ * every toggle it has a record of; a toggle the advertiser never touched is
+ * simply opted out, which is how the Ads UI shows it (Off). So we start from the
+ * full known set as Off and overlay whatever the API reports — the panel is
+ * always complete, and any toggle type we don't have a friendly name for is
+ * still shown via pretty_. `known` is false only for the base rows the API said
+ * nothing about, so a renderer can distinguish "reported Off" from "assumed
+ * Off" if it wants to.
+ */
+function mergeAutomation_(raw) {
+  var order = Object.keys(ASSET_AUTOMATION);
+  var byType = {};
+  order.forEach(function(type) {
+    byType[type] = { name: ASSET_AUTOMATION[type], on: false, known: false };
+  });
+  (raw || []).forEach(function(item) {
+    var type = item.assetAutomationType;
+    if (!type) return;
+    if (!byType[type]) order.push(type);
+    byType[type] = {
+      name: ASSET_AUTOMATION[type] || pretty_(type),
+      on: item.assetAutomationStatus === 'OPTED_IN',
+      known: true
+    };
+  });
+  return order.map(function(type) { return byType[type]; });
+}
+
 var ACQUISITION_MODES = {
   TARGET_ALL_EQUALLY: 'New and existing equally (default)',
   BID_HIGHER_FOR_NEW_CUSTOMER: 'Bids higher for new customers',
@@ -1041,7 +1070,7 @@ function pullSettings_() {
 
   var byId = {};
   rows.forEach(function(r) {
-    var automation = get_(r, 'campaign.assetAutomationSettings') || [];
+    var automation = mergeAutomation_(get_(r, 'campaign.assetAutomationSettings'));
     var target = '';
     if (get_(r, 'campaign.targetCpa.targetCpaMicros')) {
       target = 'Target CPA ' + micros_(get_(r, 'campaign.targetCpa.targetCpaMicros'));
@@ -1070,13 +1099,7 @@ function pullSettings_() {
           'campaign.geoTargetTypeSetting.positiveGeoTargetType')),
       geoNegative: pretty_(get_(r,
           'campaign.geoTargetTypeSetting.negativeGeoTargetType')),
-      automation: automation.map(function(item) {
-        return {
-          name: ASSET_AUTOMATION[item.assetAutomationType] ||
-              pretty_(item.assetAutomationType),
-          on: item.assetAutomationStatus === 'OPTED_IN'
-        };
-      }),
+      automation: automation,
       schedule: [],
       locations: [],
       excludedLocations: [],
@@ -1158,6 +1181,23 @@ function pullSettings_() {
       });
   });
 
+  // Resolve language constant IDs to readable names (1000 -> English).
+  var langNames = {};
+  var allLangs = [];
+  out.campaigns.forEach(function(c) { allLangs = allLangs.concat(c.languages); });
+  chunk_(dedupe_(allLangs), 200).forEach(function(batch) {
+    if (!batch.length) return;
+    gaql_('Resolve languages', 'language_constant',
+        ['language_constant.id', 'language_constant.name',
+         'language_constant.code'], [],
+        'language_constant.id IN (' + batch.join(',') + ')')
+      .forEach(function(r) {
+        langNames[String(get_(r, 'languageConstant.id'))] =
+            get_(r, 'languageConstant.name') ||
+            get_(r, 'languageConstant.code');
+      });
+  });
+
   out.campaigns.forEach(function(c) {
     c.locations = c.locations.map(function(id) { return geoNames[id] || id; });
     c.excludedLocations = c.excludedLocations.map(function(id) {
@@ -1166,6 +1206,7 @@ function pullSettings_() {
     c.excludedAudiences = c.excludedAudiences.map(function(id) {
       return listNames[id] || ('List ' + id);
     });
+    c.languages = c.languages.map(function(id) { return langNames[id] || id; });
   });
 
   // --- conversion goals per campaign --------------------------------------
@@ -3677,15 +3718,22 @@ function deckForAccount_(data) {
     box(slide, left, M, 100, 316, contentH, 10.5, false, T.ink);
 
     var automation = c.automation || [];
+    var anyAssumed = false;
     var right = automation.length
         ? automation.map(function(a) {
+            if (a.known === false) anyAssumed = true;
             return (a.on ? '●  ' : '○  ') + a.name + '  —  ' +
-                (a.on ? 'ON' : 'OFF');
+                (a.on ? 'ON' : 'OFF') + (a.known === false ? ' *' : '');
           }).join('\n\n')
         : 'Not reported by the API for this campaign.';
 
     box(slide, 'AI ASSET ENHANCEMENTS', M + 336, 82, 296, 14, 10, true, T.accent);
     box(slide, right, M + 336, 100, 296, contentH, 10.5, false, T.ink);
+    if (anyAssumed) {
+      box(slide, '*  the API returned no status for this toggle; shown as Off, ' +
+          'as the Ads UI displays an un-set enhancement.',
+          M + 336, H - 30, 296, 22, 7.5, false, T.muted);
+    }
     return slide;
   }
 
