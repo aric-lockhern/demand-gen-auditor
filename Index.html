@@ -8,15 +8,18 @@
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --ink: #23262F;
-    --ink-soft: #474D5A;
-    --muted: #737988;
-    --faint: #A2A8B4;
-    --paper: #EFF1F5;
+    /* Lockhern Digital brand palette. */
+    --ink: #0E0E0E;        /* brand black */
+    --ink-soft: #2A2F3A;
+    --muted: #6B7A99;      /* brand dark gray */
+    --faint: #BAC3D6;      /* brand mid gray */
+    --paper: #F4F6FA;
     --card: #FFFFFF;
-    --rule: #E4E7ED;
-    --wash: #F6F7FA;
-    --accent: #2F6BE0;
+    --rule: #E7ECF4;       /* brand light gray */
+    --wash: #F4F6FA;
+    --accent: #317AE0;     /* brand primary blue */
+    --accent-2: #2E51C0;   /* brand secondary blue */
+    --deep: #0E2970;       /* brand tertiary navy */
     --up: #1B7F5A;
     --down: #C24B3C;
     --star: #E0A030;
@@ -480,9 +483,107 @@
   }
   .toast.show { opacity: 1; }
   @media (prefers-reduced-motion: reduce) { .seg { transition: none; } }
+
+  /* --- Lockhern brand header ------------------------------------------- */
+  .brandrow { margin-bottom: 14px; }
+  .brandlogo { height: 30px; width: auto; display: block; }
+  .brandword {
+    font-family: var(--sans); font-weight: 500; letter-spacing: .14em;
+    font-size: 15px; color: var(--muted);
+  }
+  .brandword b { color: var(--accent); font-weight: 700; }
+
+  /* --- Storyboard ------------------------------------------------------ */
+  .story-intro {
+    background: var(--deep); color: #fff; border-radius: 16px;
+    padding: 20px 22px; margin-bottom: 18px;
+  }
+  .story-intro h3 {
+    margin: 0 0 6px; font-family: var(--display); font-weight: 600;
+    font-size: 20px; color: #fff;
+  }
+  .story-intro p { margin: 0; color: var(--faint); font-size: 14px; max-width: 70ch; }
+  .story-actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .slides { display: grid; grid-template-columns: 1fr; gap: 14px; }
+  .slide {
+    display: grid; grid-template-columns: 46px 1fr; gap: 16px;
+    background: var(--card); border: 1px solid var(--rule); border-radius: 14px;
+    box-shadow: var(--lift); padding: 16px 18px;
+  }
+  .slide .num {
+    width: 34px; height: 34px; border-radius: 9px; display: flex;
+    align-items: center; justify-content: center; font-weight: 700;
+    font-size: 14px; color: #fff; background: var(--accent);
+  }
+  .slide.is-title .num, .slide.is-closing .num { background: var(--deep); }
+  .slide.is-creative .num { background: var(--accent-2); }
+  .slide .body { min-width: 0; }
+  .slide .head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .slide .head h4 {
+    margin: 0; font-family: var(--display); font-weight: 600; font-size: 17px;
+    color: var(--ink);
+  }
+  .slide .kind {
+    font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted); background: var(--wash); border: 1px solid var(--rule);
+    padding: 2px 8px; border-radius: 999px;
+  }
+  .slide .summary { margin: 6px 0 10px; color: var(--ink-soft); font-size: 14px; }
+  .slide .preview { margin: 4px 0 12px; }
+  .slide textarea.note {
+    width: 100%; min-height: 58px; resize: vertical; border-radius: 10px;
+    border: 1px solid var(--rule); background: var(--wash); padding: 9px 11px;
+    font-family: var(--sans); font-size: 13.5px; color: var(--ink);
+    line-height: 1.5;
+  }
+  .slide textarea.note:focus {
+    outline: none; border-color: var(--accent); background: #fff;
+    box-shadow: 0 0 0 3px rgba(49,122,224,.12);
+  }
+  .slide .note-row {
+    display: flex; align-items: center; gap: 10px; margin-top: 6px;
+  }
+  .slide .note-label {
+    font-size: 12px; color: var(--muted); font-weight: 600;
+  }
+  .slide .note-state { font-size: 12px; color: var(--up); opacity: 0; transition: opacity .2s; }
+  .slide .note-state.show { opacity: 1; }
+
+  /* --- Creative scorecard (one page) ----------------------------------- */
+  .scorecard { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .scorecard th {
+    text-align: right; padding: 7px 8px; color: var(--muted); font-weight: 600;
+    border-bottom: 2px solid var(--rule); white-space: nowrap; font-size: 11px;
+  }
+  .scorecard th.l, .scorecard td.l { text-align: left; }
+  .scorecard td {
+    text-align: right; padding: 8px; border-bottom: 1px solid var(--rule);
+    color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+  .scorecard tr:last-child td { border-bottom: none; }
+  .scorecard .cre { display: flex; align-items: center; gap: 10px; }
+  .scorecard .cre img {
+    width: 60px; height: 34px; object-fit: cover; border-radius: 5px;
+    background: var(--wash); flex: none;
+  }
+  .scorecard .cre .t { min-width: 0; }
+  .scorecard .cre .name {
+    font-weight: 600; color: var(--ink); overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; max-width: 260px;
+  }
+  .scorecard .src { font-size: 11px; color: var(--muted); }
+  .scorecard .src.ai { color: var(--accent); font-weight: 600; }
+  .scorecard .q { color: var(--muted); }
+  .scorecard tfoot td {
+    color: var(--muted); font-size: 11px; text-align: left; padding-top: 8px;
+    border: none;
+  }
+
   @media print {
-    nav.tabs, .toolbar, .modebar, .star { display: none; }
+    nav.tabs, nav.subtabs, .toolbar, .modebar, .star, .story-actions,
+    .brandrow { display: none; }
     .panel { display: block; }
+    .slide textarea.note { border: none; background: transparent; }
   }
 </style>
 </head>
@@ -497,6 +598,11 @@ var CAN_LABEL = <?!= canLabel ? canLabel : 'false' ?>;
 var ACCOUNTS = <?!= accounts ? accounts : '[]' ?>;
 var CURRENT_ACCOUNT = <?!= current ? current : '""' ?>;
 var BASE_URL = <?!= baseUrl ? baseUrl : '""' ?>;
+var BRAND = <?!= brand ? brand : '{}' ?>;
+// Per-slide storyboard notes, keyed by slide key. Live-edited in the Storyboard
+// tab and saved back to the Commentary sheet via google.script.run.saveNote.
+var NOTES = (DATA && DATA.notes) || {};
+var POV_TAGLINE = 'Demand Gen for people who don’t like Demand Gen';
 
 if (!DATA) {
   document.getElementById('root').innerHTML =
@@ -544,8 +650,20 @@ function K() {
           value: 'convValue', roas: 'roas', word: 'Conversions' };
 }
 
+// Header logo: the real Lockhern mark if a data URI is present, otherwise a
+// brand-coloured wordmark so the header is never unbranded.
+function brandLogoHtml() {
+  var src = BRAND.logoColor || BRAND.logoMark || '';
+  if (src) {
+    return '<img class="brandlogo" src="' + esc(src) + '" alt="' +
+        esc(BRAND.name || 'Lockhern Digital') + '">';
+  }
+  return '<span class="brandword">LOCKHERN <b>DIGITAL</b></span>';
+}
+
 document.getElementById('root').innerHTML =
-  '<header><div class="kicker">Demand Gen audit</div>' +
+  '<header><div class="brandrow">' + brandLogoHtml() + '</div>' +
+    '<div class="kicker">Demand Gen audit</div>' +
     '<div class="titlerow"><h1>' + esc(DATA.account.name) + '</h1>' +
       (ACCOUNTS.length > 1
         ? '<select id="accountPicker" aria-label="Switch account">' +
@@ -1418,6 +1536,8 @@ function drawSurfaces() {
 }
 
 var VIEWS = {
+  story: { label: 'Storyboard', custom: true,
+    rows: function() { return DATA.storyboard || []; } },
   videos: { label: 'Videos', custom: true,
     rows: function() { return DATA.videos || []; } },
   surfaces: { label: 'Surfaces', custom: true,
@@ -1507,6 +1627,7 @@ var SORT = { key: 'cost', asc: false };
 // asked puts one row of five in front of the reader and keeps the rest one
 // click away rather than competing for attention.
 var GROUPS = [
+  { label: 'Deck', views: ['story'] },
   { label: 'Creative', views: ['videos', 'ads', 'assets'] },
   { label: 'Placement', views: ['surfaces', 'placements'] },
   { label: 'Audience', views: ['audiences', 'demographics'] },
@@ -1576,6 +1697,9 @@ function buildToolbar() {
   var bar = document.getElementById('toolbar');
   var isVideo = ACTIVE === 'videos';
 
+  // The storyboard is a review surface, not a data table — no filters or sort.
+  if (ACTIVE === 'story') { bar.innerHTML = ''; return; }
+
   // Surfaces has no name search; it has a metric selector driving the donuts.
   if (ACTIVE === 'settings') {
     bar.innerHTML = '<span class="count" id="count"></span>';
@@ -1634,6 +1758,145 @@ function buildToolbar() {
   }
 }
 
+// --- storyboard -----------------------------------------------------------
+// A preview of the client deck BEFORE any .pptx exists: one card per planned
+// slide, each annotatable. Notes save to the Commentary sheet and flow into
+// both the exported deck and the deck-design prompt.
+function scorecardHtml(videos) {
+  videos = (videos || []).slice(0, 24);
+  if (!videos.length) {
+    return '<p class="meta">No creatives with delivery in this window.</p>';
+  }
+  function q(v, key) {
+    var has = v.p25 || v.p50 || v.p75 || v.p100;
+    return '<td class="q">' + (has ? pct0(v[key]) : '—') + '</td>';
+  }
+  var rows = videos.map(function(v) {
+    var ai = (v.source || '') !== 'Advertiser';
+    var thumb = v.thumb
+        ? '<img src="' + esc(v.thumb) + '" alt="" loading="lazy">'
+        : '<span class="thumb"></span>';
+    return '<tr>' +
+      '<td class="l"><div class="cre">' + thumb + '<div class="t">' +
+        '<div class="name">' + esc(v.title) + '</div>' +
+        '<div class="src ' + (ai ? 'ai' : '') + '">' +
+          (ai ? 'Enhanced by Google AI' : 'Advertiser') + '</div>' +
+      '</div></div></td>' +
+      '<td>' + int(v.impressions) + '</td>' +
+      '<td>' + money(v.cost) + '</td>' +
+      '<td>' + pct(v.viewRate) + '</td>' +
+      q(v, 'p25') + q(v, 'p50') + q(v, 'p75') + q(v, 'p100') +
+      '<td>' + dec(v.conversions) + '</td>' +
+      '<td>' + int(v.viewThrough) + '</td>' +
+    '</tr>';
+  }).join('');
+  return '<div style="overflow-x:auto"><table class="scorecard">' +
+    '<thead><tr><th class="l">Creative</th><th>Impr</th><th>Cost</th>' +
+    '<th>View rate</th><th>25%</th><th>50%</th><th>75%</th><th>100%</th>' +
+    '<th>Conv</th><th>V-thru</th></tr></thead><tbody>' + rows + '</tbody>' +
+    '<tfoot><tr><td colspan="10">Every creative on one page — this is the ' +
+    'slide, not one slide per video. 25–100% = share of impressions reaching ' +
+    'that point in the video. V-thru = view-through conversions.</td></tr>' +
+    '</tfoot></table></div>';
+}
+
+function drawStoryboard() {
+  var slides = DATA.storyboard || [];
+  var intro = '<div class="story-intro">' +
+    '<h3>Deck storyboard</h3>' +
+    '<p>Each card below is a slide in the client deck — reviewable before the ' +
+    'deck is built. Add an emphasis note to any slide to give Claude a focal ' +
+    'point; notes save automatically and flow into both the exported deck and ' +
+    'the deck-design prompt. The argument this deck makes: <b>' +
+    esc(POV_TAGLINE) + '.</b></p>' +
+    '<div class="story-actions">' +
+      '<button class="briefbtn" id="storyPromptBtn">Copy deck design prompt' +
+        '</button>' +
+      '<button class="briefbtn" id="storyDeckBtn">Build slide deck</button>' +
+    '</div></div>';
+
+  if (!slides.length) {
+    return intro + '<p class="meta">No storyboard yet — run refresh in the ' +
+        'Apps Script project to rebuild the cached pull.</p>';
+  }
+
+  var list = slides.map(function(s, i) {
+    var noteVal = NOTES[s.key] || '';
+    var preview = s.kind === 'creative'
+        ? '<div class="preview">' + scorecardHtml(DATA.videos) + '</div>' : '';
+    return '<div class="slide is-' + esc(s.kind) + '">' +
+      '<div class="num">' + (i + 1) + '</div>' +
+      '<div class="body">' +
+        '<div class="head"><h4>' + esc(s.title) + '</h4>' +
+          '<span class="kind">' + esc(s.kind) + '</span></div>' +
+        '<div class="summary">' + esc(s.summary) + '</div>' +
+        preview +
+        '<div class="note-row"><span class="note-label">Emphasis for Claude' +
+          '</span><span class="note-state" id="ns-' + esc(s.key) + '"></span>' +
+        '</div>' +
+        '<textarea class="note" data-key="' + esc(s.key) + '" ' +
+          'placeholder="What should the deck stress on this slide? ' +
+          '(optional)">' + esc(noteVal) + '</textarea>' +
+      '</div></div>';
+  }).join('');
+  return intro + '<div class="slides">' + list + '</div>';
+}
+
+function saveNoteToServer(key, text) {
+  var state = document.getElementById('ns-' + key);
+  function show(msg, ok) {
+    if (!state) return;
+    state.textContent = msg;
+    state.style.color = ok ? 'var(--up)' : 'var(--down)';
+    state.className = 'note-state show';
+    if (ok) setTimeout(function() { state.className = 'note-state'; }, 1500);
+  }
+  try {
+    if (window.google && google.script && google.script.run) {
+      google.script.run
+          .withSuccessHandler(function(res) {
+            show(res === 'ok' ? 'saved' : 'not saved', res === 'ok');
+          })
+          .withFailureHandler(function() { show('not saved', false); })
+          .saveNote(key, text);
+    } else {
+      show('preview only', false);
+    }
+  } catch (e) {
+    show('not saved', false);
+  }
+}
+
+function bindStoryboard() {
+  var sp = document.getElementById('storyPromptBtn');
+  if (sp) sp.onclick = function() {
+    var b = document.getElementById('promptBtn'); if (b) b.click();
+  };
+  var sd = document.getElementById('storyDeckBtn');
+  if (sd) sd.onclick = function() {
+    var b = document.getElementById('deckBtn'); if (b) b.click();
+  };
+
+  var areas = document.querySelectorAll('#panel-story textarea.note');
+  for (var i = 0; i < areas.length; i++) {
+    (function(area) {
+      var key = area.getAttribute('data-key');
+      var timer = null;
+      area.addEventListener('input', function() {
+        NOTES[key] = area.value;
+        var state = document.getElementById('ns-' + key);
+        if (state) {
+          state.textContent = 'saving…';
+          state.style.color = 'var(--muted)';
+          state.className = 'note-state show';
+        }
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(function() { saveNoteToServer(key, area.value); }, 700);
+      });
+    })(areas[i]);
+  }
+}
+
 function render() {
   Object.keys(VIEWS).forEach(function(id) {
     document.getElementById('panel-' + id).className =
@@ -1643,6 +1906,12 @@ function render() {
   var panel = document.getElementById('panel-' + ACTIVE);
   var searchBox = document.getElementById('search');
   var term = searchBox ? searchBox.value.toLowerCase().trim() : '';
+
+  if (ACTIVE === 'story') {
+    panel.innerHTML = drawStoryboard();
+    bindStoryboard();
+    return;
+  }
 
   if (ACTIVE === 'videos') {
     panel.innerHTML = drawVideos(term);

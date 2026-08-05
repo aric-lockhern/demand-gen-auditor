@@ -15,11 +15,57 @@ rather than a file you have to host yourself.
 
 ## Files
 
-| File               | Purpose                                                            |
-| ------------------ | ----------------------------------------------------------------- |
-| `Code.gs`          | All server-side logic: config, Ads API queries, audit, Sheet I/O. |
-| `Index.html`       | Self-contained dashboard template (`createTemplateFromFile`).     |
-| `appsscript.json`  | Manifest: OAuth scopes, runtime, and web-app deployment config.   |
+| File                     | Purpose                                                           |
+| ------------------------ | ----------------------------------------------------------------- |
+| `Code.gs`                | All server-side logic: config, Ads API queries, audit, Sheet I/O, deck builder, prompts. |
+| `Index.html`             | Self-contained dashboard template (`createTemplateFromFile`).     |
+| `appsscript.json`        | Manifest: OAuth scopes, runtime, and web-app deployment config.   |
+| `prompts/lockhern-deck.md` | The house prompt for turning the audit into a Lockhern-branded, client-ready deck. |
+
+## The Lockhern layer
+
+This audit is opinionated. It argues the strategy from the talk **"Demand Gen for
+people who don't like Demand Gen"**: Demand Gen is a social/creative full-funnel
+play, not search — judge it on the 25–100% completion funnel, view-through,
+attributed brand search, brand lift and cost-per-quiz/email, not just last-click
+purchases; set Add to Cart and Begin Checkout to Primary on purpose; creative and
+landing pages are the levers.
+
+That POV and the Lockhern brand are woven through the tool:
+
+- **`BRAND`** (top of `Code.gs`) — the palette, type, and logo data-URIs, read by
+  the dashboard, the Slides deck theme, and the deck prompt. One place to edit.
+- **`POV`** — the thesis, principles, measurement lens and expectations, quoted
+  verbatim by the analysis prompt, the brief, and the deck prompt.
+- **Storyboard tab** (dashboard → **Deck**) — every planned client-deck slide as a
+  reviewable card *before any `.pptx` exists*. Add an **emphasis note** to any
+  slide; it saves to the `Commentary` sheet (via `saveNote`) and flows into both
+  the exported deck and the deck-design prompt as a focal point for Claude.
+- **One-page creative scorecard** — creatives render as a single scorecard
+  (thumbnail · advertiser vs *Enhanced by Google AI* · impressions · view rate ·
+  the 25/50/75/100% funnel · conversions · view-through), **not one slide per
+  video**. It spills to a second page only past `DECK.CREATIVE_ROWS_PER_PAGE`
+  rows. Per-video detail is an opt-in appendix — set
+  `DECK.SECTIONS.creativeDetail = true`.
+
+### The deck flow
+
+1. **Build slide deck** (header button) → a rough, on-brand Google Slides deck
+   built from the cached pull. Export it from Google Slides as PowerPoint.
+2. **Copy deck design prompt** → a per-account, Lockhern-branded prompt carrying
+   the POV, brand system, findings, your storyboard notes, and a machine-readable
+   creative appendix.
+3. Paste the prompt to Claude with the `.pptx` attached → the polished,
+   client-ready branded deck. See `prompts/lockhern-deck.md`.
+
+## Brand assets (logos)
+
+`BRAND.logoColor`, `BRAND.logoWhite`, and `BRAND.logoMark` in `Code.gs` are empty
+data-URI slots. Until they're filled, the dashboard header and deck fall back to a
+brand-coloured wordmark — nothing breaks. To embed the real logo, paste each file
+as a base64 data URI (e.g. `data:image/png;base64,iVBORw0K...`) into the matching
+slot. The dashboard reads them via the `brand` template variable; the deck decodes
+them for the title and closing slides.
 
 ## Setup
 
