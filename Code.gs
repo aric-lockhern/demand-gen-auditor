@@ -2394,11 +2394,21 @@ function buildDeckPrompt_(data) {
   push('   thumbnail from each URL. Call out the AI-modified cuts as a group.');
   push('7. **Channel and surface (ad-format) splits** — donut/bar plus a table.');
   push('8. **What counted as a conversion** — and whether ATC/Begin Checkout are');
-  push('   Primary (our deliberate stance) or purchase-only.');
-  push('9. **Structure** — campaigns, ad groups, audiences, demographics, assets.');
-  push('10. **Spend over time.**');
-  push('11. **How to read these numbers** — the caveats, kept in full.');
-  push('12. **Closing** — navy, logo, and the one recommendation that matters most.');
+  push('   Primary (our deliberate stance) or purchase-only. Include each');
+  push('   conversion action\'s view-through and click windows and whether it is');
+  push('   in the bidding column.');
+  push('9. **Campaign settings & configuration** — one slide per campaign, or a');
+  push('   tight table if there are several. Cover ALL of it: bidding strategy +');
+  push('   target CPA/ROAS, daily budget + delivery, conversion goals, new vs');
+  push('   existing customers, ad schedule, locations targeted AND excluded,');
+  push('   languages, audience exclusions, and the AI asset-enhancement toggles');
+  push('   (Shorter/Resized/Enhanced videos, image enhancements, etc.) each shown');
+  push('   ON or OFF. This is where misconfiguration hides — make it legible, and');
+  push('   flag anything that narrows delivery or starves the algorithm of signal.');
+  push('10. **Structure** — campaigns, ad groups, audiences, demographics, assets.');
+  push('11. **Spend over time.**');
+  push('12. **How to read these numbers** — the caveats, kept in full.');
+  push('13. **Closing** — navy, logo, and the one recommendation that matters most.');
   push('');
 
   if ((data.readout || {}).conversions) {
@@ -3018,6 +3028,8 @@ var DECK = {
   // 4 columns x 2 rows fits legibly on a 10in slide.
   CREATIVE_COLS: 4,
   CREATIVE_ROWS_PER_PAGE: 8,
+  // One comprehensive settings slide per campaign, up to this many.
+  SETTINGS_CAMPAIGNS: 6,
   SECTIONS: {
     headline: true, structure: true, settings: true, packing: true,
     channels: true, surfaces: true,
@@ -3624,35 +3636,82 @@ function deckForAccount_(data) {
   });
 
   // --- settings ------------------------------------------------------------
+  // One comprehensive settings slide per campaign: every Demand Gen setting the
+  // API exposes — bidding + target, budget, conversion goals, new-vs-existing,
+  // schedule, locations targeted and excluded, languages, audience exclusions,
+  // and the AI asset-enhancement toggles (on/off). Then an account-wide
+  // conversion-action setup table.
+  function settingsList(arr, n) {
+    arr = arr || [];
+    if (!arr.length) return '';
+    var s = arr.slice(0, n).join('; ');
+    if (arr.length > n) s += '  +' + (arr.length - n) + ' more';
+    return s;
+  }
+
+  function settingsSlideFor(c) {
+    var slide = deck.appendSlide(SlidesApp.PredefinedLayout.BLANK);
+    header(slide, 'Campaign settings — ' + String(c.name || '').slice(0, 42));
+    var reserved = commentary(slide, 'settings');
+    var contentH = H - 100 - reserved - 12;
+
+    var left = [
+      'Status:  ' + (c.status || '—') +
+          (c.startDate ? '   ·   since ' + c.startDate : '') +
+          (c.endDate ? '   ·   ends ' + c.endDate : ''),
+      'Bidding:  ' + (c.bidding || '—') + (c.target ? '   ·   ' + c.target : ''),
+      'Daily budget:  ' + fmtMoney(c.budget) +
+          (c.budgetShared ? '  (shared)' : '') +
+          (c.budgetDelivery ? '   ·   ' + c.budgetDelivery + ' delivery' : ''),
+      'Bids toward:  ' + ((c.goals || []).join(', ') || 'Account default goals'),
+      'New vs existing:  ' + (c.acquisition || '—'),
+      'Ad schedule:  ' + ((c.schedule || []).length
+          ? c.schedule.length + ' window(s)' : 'All day, every day'),
+      'Locations:  ' + (settingsList(c.locations, 4) || 'All locations'),
+      'Excluded locations:  ' + (settingsList(c.excludedLocations, 4) || 'None'),
+      'Languages:  ' + ((c.languages || []).join(', ') || 'All'),
+      'Excluded audiences:  ' + (settingsList(c.excludedAudiences, 4) || 'None')
+    ].join('\n\n');
+
+    box(slide, 'TARGETING & BIDDING', M, 82, 316, 14, 10, true, T.accent);
+    box(slide, left, M, 100, 316, contentH, 10.5, false, T.ink);
+
+    var automation = c.automation || [];
+    var right = automation.length
+        ? automation.map(function(a) {
+            return (a.on ? '●  ' : '○  ') + a.name + '  —  ' +
+                (a.on ? 'ON' : 'OFF');
+          }).join('\n\n')
+        : 'Not reported by the API for this campaign.';
+
+    box(slide, 'AI ASSET ENHANCEMENTS', M + 336, 82, 296, 14, 10, true, T.accent);
+    box(slide, right, M + 336, 100, 296, contentH, 10.5, false, T.ink);
+    return slide;
+  }
+
   section('Settings', true, function() {
     var settings = data.settings;
     if (!settings || !(settings.campaigns || []).length) return;
 
-    tableSlide('settings', 'How these campaigns are configured',
-      ['Campaign', 'Bidding', 'Daily budget', 'New vs existing', 'Schedule',
-       'Locations'],
-      settings.campaigns.map(function(c) {
-        return [c.name, c.bidding, fmtMoney(c.budget), c.acquisition,
-                (c.schedule || []).length ? c.schedule.length + ' windows'
-                                          : 'All day, every day',
-                (c.locations || []).slice(0, 2).join('; ') || 'All locations'];
-      }));
-
-    var automationRows = [];
-    settings.campaigns.forEach(function(c) {
-      (c.automation || []).forEach(function(a) {
-        automationRows.push([c.name, a.name, a.on ? 'ON' : 'OFF']);
-      });
-    });
-    tableSlide('settings', 'Asset optimisation', ['Campaign', 'Setting', 'State'],
-        automationRows);
+    settings.campaigns.slice(0, DECK.SETTINGS_CAMPAIGNS).forEach(settingsSlideFor);
+    if (settings.campaigns.length > DECK.SETTINGS_CAMPAIGNS) {
+      var extra = deck.appendSlide(SlidesApp.PredefinedLayout.BLANK);
+      header(extra, 'Campaign settings');
+      box(extra, 'Showing the first ' + DECK.SETTINGS_CAMPAIGNS + ' of ' +
+          settings.campaigns.length + ' campaigns. The full data sheet lists ' +
+          'every campaign.', M, 100, W - M * 2, 40, 12, false, T.muted);
+    }
 
     tableSlide('settings', 'Conversion action setup',
-      ['Action', 'In bidding column', 'View-through window', 'Click window'],
+      ['Action', 'Category', 'In column', 'Primary', 'View-through', 'Click',
+       'Counting'],
       (settings.conversionActions || []).map(function(a) {
-        return [a.name, a.inColumn ? 'yes' : 'no',
-                a.viewThroughDays ? a.viewThroughDays + ' days' : 'none',
-                a.clickThroughDays ? a.clickThroughDays + ' days' : '—'];
+        return [String(a.name || '').slice(0, 28), a.category || '—',
+                a.inColumn ? 'yes' : 'excluded',
+                a.primary ? 'primary' : 'secondary',
+                a.viewThroughDays ? a.viewThroughDays + 'd' : 'none',
+                a.clickThroughDays ? a.clickThroughDays + 'd' : '—',
+                a.counting || '—'];
       }));
   });
 

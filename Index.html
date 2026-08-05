@@ -1350,12 +1350,13 @@ function drawSettings() {
   if (actions.length) {
     out += '<div class="subhead">Conversion action setup</div>' +
       '<div class="scroll"><table><thead><tr><th>Action</th><th>Category</th>' +
-      '<th>In bidding column</th><th>View-through window</th>' +
+      '<th>In bidding column</th><th>Primary</th><th>View-through window</th>' +
       '<th>Click window</th><th>Counting</th></tr></thead><tbody>' +
       actions.map(function(a) {
         return '<tr><td class="name"><strong>' + esc(a.name) + '</strong></td>' +
           '<td class="name">' + esc(a.category) + '</td>' +
           '<td class="num">' + (a.inColumn ? 'yes' : 'excluded') + '</td>' +
+          '<td class="num">' + (a.primary ? 'primary' : 'secondary') + '</td>' +
           '<td class="num">' + (a.viewThroughDays
               ? a.viewThroughDays + ' days'
               : '<span style="color:var(--down)">none</span>') + '</td>' +
