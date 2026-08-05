@@ -1,0 +1,11 @@
+# Local clasp / credentials — never commit these
+.clasp.json
+.clasprc.json
+*.local
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

@@ -1,0 +1,1780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Demand Gen Audit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #23262F;
+    --ink-soft: #474D5A;
+    --muted: #737988;
+    --faint: #A2A8B4;
+    --paper: #EFF1F5;
+    --card: #FFFFFF;
+    --rule: #E4E7ED;
+    --wash: #F6F7FA;
+    --accent: #2F6BE0;
+    --up: #1B7F5A;
+    --down: #C24B3C;
+    --star: #E0A030;
+    /* Figures use the body face with tabular spacing rather than a monospace,
+       which keeps columns aligned without the terminal-readout look. */
+    --sans: "Figtree", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+            Helvetica, sans-serif;
+    --display: "Fraunces", Georgia, "Times New Roman", serif;
+    --figures: var(--sans);
+    --lift: 0 1px 2px rgba(25,28,36,.05), 0 4px 12px rgba(25,28,36,.04);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--sans); font-size: 15.5px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  }
+  .wrap { max-width: 1300px; margin: 0 auto; padding: 40px 28px 120px; }
+  .num, .kpi .value, .stat .v, .funnel .pctv {
+    font-family: var(--figures); font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+
+  header { margin-bottom: 28px; }
+  .kicker {
+    font-size: 12.5px; font-weight: 500; color: var(--muted);
+    letter-spacing: .01em; margin-bottom: 5px;
+  }
+  h1 {
+    font-family: var(--display); font-size: clamp(30px, 4vw, 41px);
+    font-weight: 600; letter-spacing: -.012em; margin: 0 0 6px;
+    line-height: 1.18; font-optical-sizing: auto;
+  }
+  .titlerow { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .titlerow h1 { margin-bottom: 0; }
+  #accountPicker {
+    padding: 8px 12px; border: 1px solid var(--rule); border-radius: 9px;
+    background: var(--card); font-family: var(--sans); font-size: 14px;
+    font-weight: 600; color: var(--ink); box-shadow: var(--lift);
+  }
+  #accountPicker:focus { outline: 2px solid var(--ink); outline-offset: -1px; }
+  .window { color: var(--muted); font-size: 14px; }
+  .window b { color: var(--ink-soft); font-weight: 600; }
+  .window a { color: var(--ink); }
+
+  .card {
+    background: var(--card); border: 1px solid var(--rule); border-radius: 14px;
+    box-shadow: var(--lift);
+  }
+  .section-label {
+    font-size: 13px; font-weight: 500; color: var(--muted); margin-bottom: 10px;
+  }
+
+  .readout { padding: 22px 24px; margin-bottom: 28px; }
+  .readout ul { margin: 0; padding: 0; list-style: none; }
+  .readout li {
+    padding: 11px 0 11px 26px; position: relative; color: var(--ink-soft);
+    border-top: 1px solid var(--rule); font-size: 15.5px; line-height: 1.6;
+  }
+  .readout li:first-child { border-top: none; padding-top: 2px; }
+  .readout li::before {
+    content: ""; position: absolute; left: 6px; top: 19px;
+    width: 6px; height: 6px; border-radius: 50%; background: var(--faint);
+  }
+  .readout li:first-child::before { top: 12px; }
+  .readout b { color: var(--ink); font-weight: 600; }
+
+  .spectrum { margin-bottom: 28px; }
+  .spectrum-bar {
+    display: flex; height: 56px; border-radius: 12px; overflow: hidden;
+    box-shadow: var(--lift); background: var(--card);
+  }
+  .seg {
+    border: none; padding: 0; cursor: pointer; min-width: 3px;
+    transition: width .7s cubic-bezier(.22,1,.36,1), opacity .15s;
+  }
+  .seg:hover { opacity: .85; }
+  .seg:focus-visible { outline: 3px solid var(--ink); outline-offset: -3px; }
+  .seg[aria-pressed="true"] { box-shadow: inset 0 0 0 3px var(--ink); }
+  .legend {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 10px; margin-top: 12px;
+  }
+  .legend-item {
+    padding: 12px 14px; border-radius: 10px; background: var(--card);
+    border: 1px solid var(--rule);
+  }
+  .legend-item .top { display: flex; align-items: center; gap: 8px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .legend-item .name { font-weight: 600; font-size: 14.5px; }
+  .legend-item .figs { font-size: 13px; color: var(--muted); margin-top: 3px; }
+
+  .modebar {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    margin-bottom: 18px;
+  }
+  .switch {
+    display: inline-flex; background: var(--card); border: 1px solid var(--rule);
+    border-radius: 10px; padding: 3px; box-shadow: var(--lift);
+  }
+  .switch button {
+    border: none; background: none; padding: 8px 16px; border-radius: 8px;
+    font-family: var(--sans); font-size: 14px; font-weight: 500;
+    color: var(--muted); cursor: pointer;
+  }
+  .switch button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+  .mode-hint { font-size: 13px; color: var(--muted); }
+
+  .kpis {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+    gap: 10px; margin-bottom: 32px;
+  }
+  .kpi {
+    background: var(--card); border: 1px solid var(--rule); border-radius: 12px;
+    padding: 15px 17px; box-shadow: var(--lift);
+  }
+  .kpi .label { font-size: 13px; color: var(--muted); font-weight: 500; }
+  .kpi .value {
+    font-size: 26px; font-weight: 600; letter-spacing: -.018em; margin-top: 5px;
+  }
+  .delta { font-size: 13px; margin-top: 4px; font-weight: 500; }
+  .delta.up { color: var(--up); } .delta.down { color: var(--down); }
+  .delta.flat { color: var(--faint); }
+
+  nav.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; }
+  nav.tabs button {
+    background: var(--card); border: 1px solid var(--rule); border-radius: 10px;
+    padding: 9px 15px; cursor: pointer; font-family: var(--sans);
+    font-size: 14px; font-weight: 500; color: var(--muted);
+  }
+  nav.tabs button:hover { color: var(--ink); }
+  nav.tabs button[aria-selected="true"] {
+    background: var(--ink); border-color: var(--ink); color: #fff;
+  }
+  nav.tabs .tally { opacity: .6; font-weight: 500; }
+
+  .toolbar {
+    display: flex; gap: 10px; align-items: center; margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .toolbar input, .toolbar select {
+    padding: 9px 13px; border: 1px solid var(--rule); border-radius: 9px;
+    font-family: var(--sans); font-size: 14px; background: var(--card);
+    color: var(--ink);
+  }
+  .toolbar input { flex: 1; min-width: 200px; max-width: 300px; }
+  .toolbar input:focus, .toolbar select:focus {
+    outline: 2px solid var(--ink); outline-offset: -1px;
+  }
+  .count { font-size: 13px; color: var(--muted); margin-left: auto; }
+
+  .chips { display: flex; gap: 7px; flex-wrap: wrap; }
+  .filter {
+    border: 1px solid var(--rule); background: var(--card); border-radius: 20px;
+    padding: 7px 14px; font-size: 13.5px; font-weight: 500; cursor: pointer;
+    color: var(--muted); font-family: var(--sans);
+  }
+  .filter:hover { color: var(--ink); }
+  .filter[aria-pressed="true"] {
+    background: var(--ink); color: #fff; border-color: var(--ink);
+  }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .videos {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(298px, 1fr));
+    gap: 16px;
+  }
+  .video {
+    background: var(--card); border: 1px solid var(--rule); border-radius: 14px;
+    overflow: hidden; box-shadow: var(--lift); display: flex;
+    flex-direction: column;
+  }
+  .video .shot { position: relative; aspect-ratio: 16/9; background: var(--wash); }
+  .video .shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .video .shot .none {
+    display: flex; align-items: center; justify-content: center; height: 100%;
+    color: var(--faint); font-size: 13px;
+  }
+  .star {
+    position: absolute; top: 9px; right: 9px; width: 32px; height: 32px;
+    border-radius: 50%; border: none; cursor: pointer; font-size: 15px;
+    background: rgba(255,255,255,.92); color: var(--faint); line-height: 1;
+    box-shadow: 0 1px 4px rgba(0,0,0,.2);
+  }
+  .star[aria-pressed="true"] { color: var(--star); }
+  .rating {
+    position: absolute; bottom: 9px; left: 9px; font-size: 11.5px;
+    font-weight: 500; padding: 4px 10px; border-radius: 20px;
+    background: rgba(25,28,36,.82); color: #fff;
+  }
+  .rating.best { background: var(--up); }
+  .rating.low { background: var(--down); }
+  .video .body {
+    padding: 14px 16px 16px; flex: 1; display: flex; flex-direction: column;
+  }
+  .video h3 {
+    font-family: var(--display); margin: 0 0 4px; font-size: 17px;
+    font-weight: 600; letter-spacing: -.005em; line-height: 1.3;
+  }
+  .video .where { font-size: 12.5px; color: var(--muted); margin-bottom: 12px; }
+  .stats {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+    padding: 12px 0; border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+  }
+  .stat .k { font-size: 11.5px; color: var(--muted); }
+  .stat .v { font-size: 15.5px; font-weight: 600; margin-top: 2px; }
+  .funnel { margin-top: 12px; }
+  .funnel .head {
+    display: flex; justify-content: space-between; font-size: 11.5px;
+    color: var(--muted); margin-bottom: 6px; gap: 8px;
+  }
+  .funnel .head em { font-style: normal; color: var(--faint); }
+  .funnel .row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .funnel .tick { font-size: 11px; color: var(--faint); width: 30px; flex: none; }
+  .funnel .track {
+    flex: 1; height: 7px; background: var(--wash); border-radius: 4px;
+    overflow: hidden;
+  }
+  .funnel .fill { height: 100%; background: var(--ink); border-radius: 4px; }
+  .funnel .pctv {
+    font-size: 12px; width: 46px; text-align: right; color: var(--ink-soft);
+    flex: none;
+  }
+  .video .shot iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .play {
+    position: absolute; inset: 0; margin: auto; width: 52px; height: 52px;
+    border-radius: 50%; border: none; cursor: pointer; font-size: 17px;
+    background: rgba(25,28,36,.72); color: #fff; line-height: 1;
+    padding-left: 3px;
+  }
+  .play:hover { background: rgba(25,28,36,.88); }
+  .play:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+  .convs { margin-top: 12px; }
+  .convs summary {
+    cursor: pointer; font-size: 13px; color: var(--muted); font-weight: 500;
+    list-style: none;
+  }
+  .convs summary::-webkit-details-marker { display: none; }
+  .convs summary::before { content: "\25B8 "; color: var(--faint); }
+  .convs[open] summary::before { content: "\25BE "; }
+  .convs table { width: 100%; margin-top: 8px; }
+  .convs td {
+    padding: 5px 0; font-size: 12.5px; border-bottom: 1px solid var(--rule);
+  }
+  .convs td:first-child { text-align: left; color: var(--ink-soft); }
+  .convs tr:last-child td { border-bottom: none; }
+  nav.subtabs {
+    display: flex; gap: 18px; flex-wrap: wrap; margin: -6px 0 18px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--rule);
+  }
+  nav.subtabs button {
+    background: none; border: none; padding: 2px 0; cursor: pointer;
+    font-family: var(--sans); font-size: 14px; font-weight: 500;
+    color: var(--muted); border-bottom: 2px solid transparent;
+  }
+  nav.subtabs button:hover { color: var(--ink); }
+  nav.subtabs button[aria-selected="true"] {
+    color: var(--ink); border-bottom-color: var(--ink);
+  }
+  nav.subtabs .tally { opacity: .55; }
+
+  .donutgrid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+    gap: 16px;
+  }
+  .donutcard {
+    background: var(--card); border: 1px solid var(--rule); border-radius: 14px;
+    box-shadow: var(--lift); padding: 20px 22px;
+  }
+  .donutcard h3 {
+    font-family: var(--display); font-size: 17px; font-weight: 600;
+    margin: 0 0 16px; letter-spacing: -.005em;
+  }
+  .donutrow { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; }
+  .donutrow svg { flex: none; }
+  .donut-total { text-anchor: middle; }
+  .donut-total .big {
+    font-size: 19px; font-weight: 600; fill: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .donut-total .small { font-size: 11px; fill: var(--muted); }
+  .donutlegend { flex: 1; min-width: 165px; display: grid; gap: 9px; }
+  .donutlegend .row { display: flex; align-items: baseline; gap: 9px; font-size: 13.5px; }
+  .donutlegend .row .nm { flex: 1; color: var(--ink-soft); }
+  .donutlegend .row .vl { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .donutlegend .row .sh { color: var(--muted); width: 42px; text-align: right;
+    font-variant-numeric: tabular-nums; }
+  .setgrid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
+  }
+  .setcard {
+    background: var(--card); border: 1px solid var(--rule); border-radius: 14px;
+    box-shadow: var(--lift); padding: 18px 20px;
+  }
+  .setcard h3 {
+    font-family: var(--display); font-size: 17px; font-weight: 600;
+    margin: 0 0 4px; letter-spacing: -.005em;
+  }
+  .setcard .sub { font-size: 12.5px; color: var(--muted); margin-bottom: 14px; }
+  .setrow {
+    display: flex; justify-content: space-between; gap: 14px; padding: 8px 0;
+    border-top: 1px solid var(--rule); font-size: 13.5px;
+  }
+  .setrow:first-of-type { border-top: none; }
+  .setrow .k { color: var(--muted); flex: none; }
+  .setrow .v { text-align: right; font-weight: 500; }
+  .flagpill {
+    display: inline-block; font-size: 11.5px; font-weight: 500; padding: 2px 9px;
+    border-radius: 20px; margin-left: 6px;
+  }
+  .flagpill.on { background: #E4F3EC; color: var(--up); }
+  .flagpill.off { background: #FBEAE7; color: var(--down); }
+  .warnbox {
+    background: #FBEAE7; border: 1px solid #F0CFC8; border-radius: 12px;
+    padding: 16px 18px; margin-bottom: 16px; font-size: 14px;
+    color: var(--ink); line-height: 1.6;
+  }
+  .warnbox strong { font-weight: 600; }
+  .nodepth {
+    margin-top: 12px; padding: 10px 12px; background: var(--wash);
+    border-radius: 9px; font-size: 12.5px; color: var(--muted); line-height: 1.5;
+  }
+  .surfaces { display: grid; gap: 10px; }
+  .surface {
+    background: var(--card); border: 1px solid var(--rule); border-radius: 12px;
+    padding: 14px 18px; box-shadow: var(--lift);
+    display: grid; grid-template-columns: 200px 1fr; gap: 18px;
+    align-items: center;
+  }
+  .surface .who { min-width: 0; }
+  .surface .who strong { font-size: 15.5px; font-weight: 600; }
+  .surface .track {
+    height: 12px; background: var(--wash); border-radius: 6px; overflow: hidden;
+    margin-bottom: 9px;
+  }
+  .surface .fill { display: block; height: 100%; border-radius: 6px; }
+  .surface .figs {
+    display: flex; gap: 22px; flex-wrap: wrap; font-size: 13.5px;
+    color: var(--muted);
+  }
+  .surface .figs b {
+    color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+  @media (max-width: 720px) {
+    .surface { grid-template-columns: 1fr; gap: 10px; }
+  }
+  .sharebar {
+    display: block; height: 5px; border-radius: 3px; background: var(--ink-soft);
+    min-width: 2px;
+  }
+  .subhead {
+    font-family: var(--display); font-size: 18px; font-weight: 600;
+    letter-spacing: -.005em; margin: 28px 0 12px; color: var(--ink);
+  }
+  .subhead:first-child { margin-top: 0; }
+  .video .foot { margin-top: 12px; display: flex; gap: 12px; font-size: 13px;
+    flex-wrap: wrap; align-items: center; }
+  .video .foot a { color: var(--ink); font-weight: 500; }
+
+  .scroll {
+    overflow-x: auto; background: var(--card); border: 1px solid var(--rule);
+    border-radius: 12px; box-shadow: var(--lift);
+  }
+  table { border-collapse: collapse; width: 100%; }
+  th, td {
+    padding: 14px 16px; text-align: right; white-space: nowrap;
+    border-bottom: 1px solid var(--rule); font-size: 14.5px;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  th {
+    position: sticky; top: 0; background: var(--wash); color: var(--muted);
+    z-index: 2; font-size: 13px; font-weight: 500; cursor: pointer;
+    user-select: none;
+  }
+  th:hover { color: var(--ink); }
+  th:first-child, td:first-child { text-align: left; }
+  th.sorted { color: var(--ink); }
+  th.sorted::after { content: " \2193"; }
+  th.sorted.asc::after { content: " \2191"; }
+  tbody tr:hover { background: var(--wash); }
+  td.name { max-width: 360px; white-space: normal; }
+  .meta { color: var(--muted); font-size: 12.5px; display: block; margin-top: 2px; }
+  .row-flex { display: flex; gap: 11px; align-items: flex-start; }
+  .thumb {
+    width: 68px; height: 42px; object-fit: cover; border-radius: 7px; flex: none;
+    background: var(--wash);
+  }
+  .tag {
+    font-size: 12px; padding: 3px 10px; border-radius: 20px; font-weight: 500;
+    border: 1px solid var(--rule); color: var(--muted); display: inline-block;
+  }
+  .tag.best { border-color: var(--up); color: var(--up); }
+  .tag.low { border-color: var(--down); color: var(--down); }
+  .linkrow { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 5px; }
+  .linkrow a { font-size: 12.5px; color: var(--ink); }
+  .mix {
+    display: flex; height: 5px; width: 96px; border-radius: 3px; overflow: hidden;
+    margin-top: 6px;
+  }
+  .mix i { display: block; height: 100%; }
+
+  .spark { display: flex; align-items: flex-end; gap: 3px; height: 96px; margin-top: 8px; }
+  .spark i {
+    flex: 1; background: var(--ink-soft); min-height: 2px; border-radius: 2px 2px 0 0;
+  }
+
+  .empty { padding: 48px; text-align: center; color: var(--muted); }
+  .setup {
+    padding: 56px; text-align: center; background: var(--card);
+    border: 1px solid var(--rule); border-radius: 14px;
+  }
+  .setup h2 {
+    font-family: var(--display); margin: 0 0 8px; font-size: 22px;
+    font-weight: 600; letter-spacing: -.005em;
+  }
+  .setup p { color: var(--muted); margin: 0; }
+  .note {
+    margin-top: 36px; padding: 18px 22px; font-size: 13px; color: var(--muted);
+    background: var(--card); border: 1px solid var(--rule); border-radius: 12px;
+  }
+  .note b { color: var(--ink-soft); }
+  .briefbtn {
+    border: 1px solid var(--rule); background: var(--card); border-radius: 10px;
+    padding: 9px 15px; font-family: var(--sans); font-size: 14px;
+    font-weight: 500; color: var(--ink); cursor: pointer; box-shadow: var(--lift);
+  }
+  .briefbtn:hover { background: var(--wash); }
+  .briefwrap { margin-top: 14px; display: none; }
+  .briefwrap.open { display: block; }
+  .briefwrap textarea {
+    width: 100%; height: 260px; padding: 14px 16px; border-radius: 12px;
+    border: 1px solid var(--rule); background: var(--card); color: var(--ink-soft);
+    font-family: var(--sans); font-size: 13px; line-height: 1.55; resize: vertical;
+  }
+  .briefwrap p { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+  .actionbar { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .deckwrap { margin-top: 14px; display: none; }
+  .deckwrap.open { display: block; }
+  .progress {
+    height: 8px; background: var(--rule); border-radius: 5px; overflow: hidden;
+    max-width: 460px;
+  }
+  .progress i {
+    display: block; height: 100%; width: 0; background: var(--accent);
+    border-radius: 5px; transition: width .4s ease;
+  }
+  .progress-label { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .decklink {
+    display: inline-block; margin-top: 10px; font-size: 14.5px;
+    font-weight: 600; color: var(--ink);
+  }
+  .deckerr { color: var(--down); font-size: 13px; margin-top: 8px; }
+  .toast {
+    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 10px;
+    font-size: 13.5px; opacity: 0; pointer-events: none; transition: opacity .25s;
+  }
+  .toast.show { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { .seg { transition: none; } }
+  @media print {
+    nav.tabs, .toolbar, .modebar, .star { display: none; }
+    .panel { display: block; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="root"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+var DATA = <?!= payload ? payload : 'null' ?>;
+var LABELS = <?!= labels ? labels : '{}' ?>;
+var CAN_LABEL = <?!= canLabel ? canLabel : 'false' ?>;
+var ACCOUNTS = <?!= accounts ? accounts : '[]' ?>;
+var CURRENT_ACCOUNT = <?!= current ? current : '""' ?>;
+var BASE_URL = <?!= baseUrl ? baseUrl : '""' ?>;
+
+if (!DATA) {
+  document.getElementById('root').innerHTML =
+      '<div class="setup"><h2>No data yet</h2><p>Run <b>setup</b> in the ' +
+      'Apps Script project, list your account IDs in the Settings tab, then ' +
+      'run <b>refresh</b>. This page reads the cached pull, so it stays fast ' +
+      'for whoever you share it with.</p></div>';
+} else {
+  start();
+}
+
+function start() {
+var CUR = DATA.account.currency;
+var CHANNEL_FILTER = null;
+var MODE = 'conversions';
+var VIDEO_FILTER = 'all';
+var VIDEO_SORT = 'cost';
+
+function money(v) {
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency: CUR,
+      maximumFractionDigits: Math.abs(v || 0) >= 1000 ? 0 : 2 }).format(v || 0);
+}
+function int(v) { return Math.round(v || 0).toLocaleString(); }
+function dec(v) { return (v || 0).toFixed(2); }
+function pct(v) { return ((v || 0) * 100).toFixed(1) + '%'; }
+function pct0(v) { return Math.round((v || 0) * 100) + '%'; }
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function(c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+  });
+}
+function toast(text) {
+  var el = document.getElementById('toast');
+  el.textContent = text;
+  el.className = 'toast show';
+  setTimeout(function() { el.className = 'toast'; }, 1800);
+}
+
+/** Which conversion family the whole dashboard is currently reading. */
+function K() {
+  return MODE === 'all'
+      ? { conv: 'allConversions', cvr: 'allCvr', cpa: 'allCpa',
+          value: 'allConvValue', roas: 'allRoas', word: 'All conv.' }
+      : { conv: 'conversions', cvr: 'cvr', cpa: 'cpa',
+          value: 'convValue', roas: 'roas', word: 'Conversions' };
+}
+
+document.getElementById('root').innerHTML =
+  '<header><div class="kicker">Demand Gen audit</div>' +
+    '<div class="titlerow"><h1>' + esc(DATA.account.name) + '</h1>' +
+      (ACCOUNTS.length > 1
+        ? '<select id="accountPicker" aria-label="Switch account">' +
+          ACCOUNTS.map(function(a) {
+            return '<option value="' + esc(a.id) + '"' +
+                (a.id === CURRENT_ACCOUNT ? ' selected' : '') + '>' +
+                esc(a.name) + '</option>';
+          }).join('') + '</select>'
+        : '') +
+    '</div><div class="window" id="window"></div>' +
+    '<div class="actionbar">' +
+      '<button class="briefbtn" id="briefBtn">Copy analysis brief</button>' +
+      '<button class="briefbtn" id="promptBtn">Copy deck design prompt</button>' +
+      '<button class="briefbtn" id="deckBtn">Build slide deck</button>' +
+    '</div>' +
+    '<div class="deckwrap" id="deckWrap">' +
+      '<div class="progress"><i id="deckBar"></i></div>' +
+      '<div class="progress-label" id="deckLabel"></div>' +
+      '<div id="deckResult"></div>' +
+    '</div>' +
+    '<div class="briefwrap" id="briefWrap">' +
+      '<textarea id="briefText" readonly aria-label="Copied text"></textarea>' +
+      '<p id="briefHint"></p>' +
+    '</div>' +
+    '</header>' +
+  '<div class="card readout"><div class="section-label">What the numbers say</div>' +
+    '<ul id="readout"></ul></div>' +
+  '<section class="spectrum"><div class="section-label">Where the budget went</div>' +
+    '<div class="spectrum-bar" id="spectrum"></div>' +
+    '<div class="legend" id="legend"></div></section>' +
+  '<div class="modebar"><div class="switch" id="modeSwitch">' +
+      '<button data-mode="conversions">Conversions</button>' +
+      '<button data-mode="all">All conversions</button></div>' +
+    '<span class="mode-hint" id="modeHint"></span></div>' +
+  '<div class="kpis" id="kpis"></div>' +
+  '<nav class="tabs" id="tabs"></nav>' +
+  '<nav class="subtabs" id="subtabs"></nav>' +
+  '<div class="toolbar" id="toolbar"></div>' +
+  '<div id="panels"></div>' +
+  '<div class="note" id="note"></div>';
+
+if (ACCOUNTS.length > 1) {
+  document.getElementById('accountPicker').onchange = function() {
+    // The web app runs in a sandboxed iframe, so navigate the top frame.
+    var url = BASE_URL + '?account=' + encodeURIComponent(this.value);
+    if (BASE_URL) { (window.top || window).location.href = url; }
+  };
+}
+
+document.getElementById('window').innerHTML =
+    'Account <b>' + esc(DATA.account.id) + '</b> &nbsp;·&nbsp; <b>' +
+    esc(DATA.account.start) + '</b> to <b>' + esc(DATA.account.end) + '</b>' +
+    (DATA.account.priorStart ? ' &nbsp;·&nbsp; vs <b>' +
+        esc(DATA.account.priorStart) + '</b> to <b>' +
+        esc(DATA.account.priorEnd) + '</b>' : '') +
+    ' &nbsp;·&nbsp; refreshed ' + esc(DATA.account.generated) +
+    (DATA.sheetUrl ? ' &nbsp;·&nbsp; <a href="' + esc(DATA.sheetUrl) +
+        '" target="_blank" rel="noopener">full data sheet</a>' : '');
+
+// --- analysis brief -------------------------------------------------------
+var COPY_HINTS = {
+  brief: 'Paste this into Claude. It carries the analysis prompt plus the ' +
+      'caveats the raw numbers lose \u2014 inferred figures, actions excluded ' +
+      'from bidding, and anything the API refused.',
+  prompt: 'Build the slide deck, export it from Google Slides as PowerPoint, ' +
+      'then upload that .pptx to Claude with this prompt. It carries the ' +
+      'findings so the titles can assert something rather than just label ' +
+      'the slide.'
+};
+
+/**
+ * Both copy buttons share one panel. The async clipboard API is frequently
+ * blocked inside the web app's sandboxed iframe, so fall back to execCommand
+ * and finally to leaving the text selected for a manual copy.
+ */
+function copyPanel(text, hint, missing) {
+  var area = document.getElementById('briefText');
+  var wrap = document.getElementById('briefWrap');
+  var value = text || missing;
+
+  area.value = value;
+  document.getElementById('briefHint').textContent = hint;
+  wrap.className = 'briefwrap open';
+  area.focus();
+  area.select();
+
+  if (!text) {
+    toast('Nothing to copy yet');
+    return;
+  }
+
+  function ok() { toast('Copied \u2014 paste into Claude'); }
+  function legacy() {
+    try {
+      toast(document.execCommand('copy') ? 'Copied \u2014 paste into Claude'
+                                         : 'Select the text below and copy');
+    } catch (e) {
+      toast('Select the text below and copy');
+    }
+  }
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(value).then(ok, legacy);
+      return;
+    }
+  } catch (e) {
+    // Fall through to the legacy path.
+  }
+  legacy();
+}
+
+var NEEDS_REFRESH = 'Not in this cached pull.\n\nRun refresh in the Apps ' +
+    'Script project, or from the "Demand Gen audit" menu in the spreadsheet.';
+
+document.getElementById('briefBtn').onclick = function() {
+  copyPanel(DATA.brief, COPY_HINTS.brief, NEEDS_REFRESH);
+};
+
+document.getElementById('promptBtn').onclick = function() {
+  copyPanel(DATA.deckPrompt, COPY_HINTS.prompt, NEEDS_REFRESH);
+};
+
+// --- deck builder ---------------------------------------------------------
+var deckPoll = null;
+
+function deckSetProgress(fraction, label) {
+  document.getElementById('deckBar').style.width =
+      Math.round(Math.max(0, Math.min(1, fraction)) * 100) + '%';
+  document.getElementById('deckLabel').textContent = label;
+}
+
+document.getElementById('deckBtn').onclick = function() {
+  var button = this;
+  var wrap = document.getElementById('deckWrap');
+  var result = document.getElementById('deckResult');
+
+  if (typeof google === 'undefined' || !google.script || !google.script.run) {
+    wrap.className = 'deckwrap open';
+    result.innerHTML = '<div class="deckerr">Deck building needs the deployed ' +
+        'web app. Open the published URL rather than a local copy of this ' +
+        'file.</div>';
+    return;
+  }
+
+  button.disabled = true;
+  wrap.className = 'deckwrap open';
+  result.innerHTML = '';
+  deckSetProgress(0.02, 'Starting\u2026');
+
+  // The build is its own execution, so poll the server for real progress
+  // rather than animating a fake timer.
+  deckPoll = setInterval(function() {
+    google.script.run.withSuccessHandler(function(state) {
+      if (!state || !state.total || state.done >= state.total) return;
+      deckSetProgress(state.done / state.total,
+          state.label + '\u2026 (' + state.done + ' of ' + state.total + ')');
+    }).deckProgress();
+  }, 900);
+
+  function finish() {
+    clearInterval(deckPoll);
+    button.disabled = false;
+  }
+
+  google.script.run
+      .withSuccessHandler(function(response) {
+        finish();
+        if (!response || !response.ok) {
+          deckSetProgress(1, 'Failed');
+          result.innerHTML = '<div class="deckerr">' +
+              esc((response && response.error) || 'Unknown error') + '</div>';
+          return;
+        }
+        deckSetProgress(1, 'Deck ready');
+        result.innerHTML = response.urls.map(function(url, i) {
+          return '<a class="decklink" href="' + esc(url) + '" target="_blank" ' +
+              'rel="noopener">Open slide deck' +
+              (response.urls.length > 1 ? ' ' + (i + 1) : '') + ' \u2192</a>';
+        }).join('<br>');
+        toast('Slide deck ready');
+      })
+      .withFailureHandler(function(error) {
+        finish();
+        deckSetProgress(1, 'Failed');
+        result.innerHTML = '<div class="deckerr">' +
+            esc(error && error.message ? error.message : String(error)) +
+            '</div>';
+      })
+      .buildDeckForWeb();
+};
+
+// --- plain-language read-out ---------------------------------------------
+function drawReadout() {
+  // Generated on the server so the dashboard and the slide deck cannot drift.
+  var source = DATA.readout || {};
+  var lines = (MODE === 'all' ? source.all : source.conversions) || [];
+
+  document.getElementById('readout').innerHTML = lines.length
+      ? lines.map(function(line) {
+          // ** wraps the figures: the deck strips them, we embolden them.
+          return '<li>' + esc(line).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>') +
+              '</li>';
+        }).join('')
+      : '<li>No read-out in this cached pull. Run refresh to generate it.</li>';
+}
+
+// --- channel spectrum -----------------------------------------------------
+function drawSpectrum() {
+  var mix = DATA.channelMix.filter(function(c) { return c.cost > 0; });
+  var total = mix.reduce(function(s, c) { return s + c.cost; }, 0);
+  var bar = document.getElementById('spectrum');
+  var legend = document.getElementById('legend');
+  var k = K();
+
+  if (!total) {
+    bar.innerHTML = '<div class="empty">No spend recorded in this window.</div>';
+    legend.innerHTML = '';
+    return;
+  }
+  bar.innerHTML = '';
+  legend.innerHTML = '';
+
+  mix.forEach(function(c) {
+    var share = c.cost / total;
+    var seg = document.createElement('button');
+    seg.className = 'seg';
+    seg.style.background = c.color;
+    seg.style.width = '0%';
+    seg.title = c.channel + ' — ' + money(c.cost) + ' (' + pct0(share) + ')';
+    seg.setAttribute('aria-pressed', String(CHANNEL_FILTER === c.channel));
+    seg.setAttribute('aria-label', 'Filter ads to ' + c.channel);
+    seg.onclick = function() { toggleChannel(c.channel); };
+    bar.appendChild(seg);
+    // Animate if we can; a missing rAF must not take the page down with it.
+    var grow = function() { seg.style.width = (share * 100) + '%'; };
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(grow);
+    } else {
+      grow();
+    }
+
+    var item = document.createElement('div');
+    item.className = 'legend-item';
+    item.innerHTML =
+        '<div class="top"><span class="dot" style="background:' + c.color +
+        '"></span><span class="name">' + esc(c.channel) + '</span></div>' +
+        '<div class="figs"><span class="num">' + money(c.cost) + '</span> · ' +
+        pct0(share) + ' of spend</div>' +
+        '<div class="figs"><span class="num">' + dec(c[k.conv]) + '</span> ' +
+        k.word.toLowerCase() + ' · ' +
+        (c[k.conv] ? money(c[k.cpa]) + ' each' : 'none yet') + '</div>';
+    legend.appendChild(item);
+  });
+}
+
+function toggleChannel(channel) {
+  CHANNEL_FILTER = (CHANNEL_FILTER === channel) ? null : channel;
+  drawSpectrum();
+  render();
+}
+
+// --- conversion mode ------------------------------------------------------
+function drawMode() {
+  var buttons = document.getElementById('modeSwitch').children;
+  for (var i = 0; i < buttons.length; i++) {
+    var b = buttons[i];
+    b.setAttribute('aria-pressed', String(b.getAttribute('data-mode') === MODE));
+    b.onclick = function() {
+      MODE = this.getAttribute('data-mode');
+      drawMode();
+      drawReadout();
+      drawSpectrum();
+      drawKpis();
+      render();
+    };
+  }
+  document.getElementById('modeHint').textContent = MODE === 'all'
+      ? 'Every tracked conversion action, including those excluded from bidding.'
+      : 'Only actions in the Conversions column that bidding optimises toward.';
+}
+
+// --- KPIs -----------------------------------------------------------------
+function drawKpis() {
+  var t = DATA.totals, p = DATA.prior, k = K();
+  var items = [
+    ['Spend', money(t.cost), 'cost', true],
+    ['Impressions', int(t.impressions), 'impressions', false],
+    ['Clicks', int(t.clicks), 'clicks', false],
+    ['Click rate', pct(t.ctr), 'ctr', false],
+    ['Cost per click', money(t.cpc), 'cpc', true],
+    ['Cost per 1,000', money(t.cpm), 'cpm', true],
+    [k.word, dec(t[k.conv]), k.conv, false],
+    ['Conv. rate', pct(t[k.cvr]), k.cvr, false],
+    ['Cost per action', t[k.conv] ? money(t[k.cpa]) : '—', k.cpa, true],
+    ['Return on spend', t.cost ? dec(t[k.roas]) + 'x' : '—', k.roas, false],
+    ['View-through conv.', int(t.viewThrough), 'viewThrough', false],
+    ['Video views', int(t.videoViews), 'videoViews', false],
+    ['View rate', pct(t.viewRate), 'viewRate', false],
+    ['Watched in full', pct(t.p100), 'p100', false]
+  ];
+
+  document.getElementById('kpis').innerHTML = items.map(function(item) {
+    var delta = '';
+    if (p && p[item[2]]) {
+      var change = (t[item[2]] - p[item[2]]) / p[item[2]];
+      var good = item[3] ? change < 0 : change > 0;
+      var cls = Math.abs(change) < 0.005 ? 'flat' : (good ? 'up' : 'down');
+      delta = '<div class="delta ' + cls + '">' + (change >= 0 ? '+' : '') +
+          (change * 100).toFixed(0) + '% vs prior</div>';
+    }
+    return '<div class="kpi"><div class="label">' + item[0] + '</div>' +
+        '<div class="value">' + item[1] + '</div>' + delta + '</div>';
+  }).join('');
+}
+
+// --- videos ---------------------------------------------------------------
+function videoStats() {
+  var vids = DATA.videos || [];
+  var k = K();
+  var cpas = vids.filter(function(v) { return v[k.conv] > 0; })
+      .map(function(v) { return v[k.cpa]; })
+      .sort(function(a, b) { return a - b; });
+  var comps = vids.map(function(v) { return v.p100 || 0; })
+      .sort(function(a, b) { return a - b; });
+  return {
+    medianCpa: cpas.length ? cpas[Math.floor(cpas.length / 2)] : 0,
+    medianComp: comps.length ? comps[Math.floor(comps.length / 2)] : 0
+  };
+}
+
+var VIDEO_FILTERS = [
+  ['all', 'All videos'],
+  ['starred', 'Starred'],
+  ['best', 'Rated Best'],
+  ['efficient', 'Beats median cost'],
+  ['completion', 'Holds attention'],
+  ['none', 'No conversions']
+];
+
+function videoPasses(v) {
+  var k = K(), s = videoStats();
+  if (VIDEO_FILTER === 'starred') return !!LABELS[v.id];
+  if (VIDEO_FILTER === 'best') return v.label === 'Best';
+  if (VIDEO_FILTER === 'efficient') {
+    return v[k.conv] > 0 && s.medianCpa > 0 && v[k.cpa] <= s.medianCpa;
+  }
+  if (VIDEO_FILTER === 'completion') {
+    return (v.p100 || 0) > 0 && v.p100 >= s.medianComp;
+  }
+  if (VIDEO_FILTER === 'none') return !v[k.conv];
+  return true;
+}
+
+function drawVideos(term) {
+  var k = K();
+  var all = DATA.videos || [];
+  var rows = all.filter(function(v) {
+    return videoPasses(v) &&
+        (!term || String(v.title).toLowerCase().indexOf(term) !== -1);
+  });
+
+  rows.sort(function(a, b) {
+    if (VIDEO_SORT === 'cpa') {
+      var x = a[k.conv] ? a[k.cpa] : Infinity;
+      var y = b[k.conv] ? b[k.cpa] : Infinity;
+      return x - y;
+    }
+    var key = VIDEO_SORT === 'conv' ? k.conv : VIDEO_SORT;
+    return (b[key] || 0) - (a[key] || 0);
+  });
+
+  document.getElementById('count').textContent =
+      rows.length + ' of ' + all.length + ' videos';
+
+  if (!all.length) {
+    return '<div class="scroll"><div class="empty">No video assets returned. ' +
+        'If this account runs image-only Demand Gen ads, that is expected — ' +
+        'check the Assets tab instead.</div></div>';
+  }
+  if (!rows.length) {
+    return '<div class="scroll"><div class="empty">No videos match this ' +
+        'filter.</div></div>';
+  }
+
+  return '<div class="videos">' + rows.map(function(v) {
+    var starred = !!LABELS[v.id];
+    // Not every video has an mqdefault image, so ship a fallback chain and
+    // let bindThumbs walk it on error rather than showing a broken frame.
+    var shot = v.videoId
+        ? '<img src="https://i.ytimg.com/vi/' + esc(v.videoId) +
+          '/mqdefault.jpg" data-yt="' + esc(v.videoId) + '" data-step="0" ' +
+          'alt="Thumbnail for ' + esc(v.title) + '" loading="lazy">' +
+          '<button class="play" data-play="' + esc(v.videoId) + '" ' +
+          'title="Play here" aria-label="Play ' + esc(v.title) +
+          ' without leaving the page">\u25B6</button>'
+        : '<div class="none">No YouTube ID returned</div>';
+    var ratingCls = v.label === 'Best' ? 'best' : (v.label === 'Low' ? 'low' : '');
+    var rating = v.label
+        ? '<span class="rating ' + ratingCls + '">' + esc(v.label) + '</span>' : '';
+    var starBtn = CAN_LABEL
+        ? '<button class="star" data-video="' + esc(v.id) + '" aria-pressed="' +
+          starred + '" title="Star this video">' +
+          (starred ? '\u2605' : '\u2606') + '</button>'
+        : '';
+
+    var ticks = ['25%', '50%', '75%', 'End'];
+    var funnel = ['p25', 'p50', 'p75', 'p100'].map(function(q, i) {
+      return '<div class="row"><span class="tick">' + ticks[i] + '</span>' +
+          '<span class="track"><span class="fill" style="width:' +
+          Math.min(100, (v[q] || 0) * 100) + '%"></span></span>' +
+          '<span class="pctv">' + pct0(v[q]) + '</span></div>';
+    }).join('');
+
+    return '<div class="video">' +
+      '<div class="shot">' + shot + starBtn + rating + '</div>' +
+      '<div class="body">' +
+        '<h3>' + esc(v.title) + '</h3>' +
+        '<div class="where">' + v.adGroupCount + ' ad group' +
+          (v.adGroupCount === 1 ? '' : 's') + ' · ' +
+          esc((v.campaignList || []).join(', ')) + '</div>' +
+        '<div class="stats">' +
+          '<div class="stat"><div class="k">Spend</div><div class="v">' +
+            money(v.cost) + '</div></div>' +
+          '<div class="stat"><div class="k">' + k.word + '</div><div class="v">' +
+            dec(v[k.conv]) + '</div></div>' +
+          '<div class="stat"><div class="k">Per action</div><div class="v">' +
+            (v[k.conv] ? money(v[k.cpa]) : '—') + '</div></div>' +
+          '<div class="stat"><div class="k">View rate</div><div class="v">' +
+            pct0(v.viewRate) + '</div></div>' +
+        '</div>' +
+        ((v.p25 || v.p100)
+          ? '<div class="funnel"><div class="head"><span>How far people watch' +
+            (v.quartileSource === 'ad' ? ' <em>(from its ad)</em>' : '') +
+            '</span><span class="num">' + int(v.videoViews) + ' views</span>' +
+            '</div>' + funnel + '</div>'
+          : '<div class="nodepth">Watch depth isn\u2019t reported per video' +
+            (v.depthNote === 'shared-ad'
+              ? '. This creative shares an ad with others, and that ad reports ' +
+                'one blended rate across all of them.'
+              : ' for this creative.') +
+            ' The view rate above is measured.</div>') +
+        convBlock(v, k) +
+        '<div class="foot">' +
+          (v.url
+            ? '<a href="' + esc(v.url) + '" target="_blank" rel="noopener">' +
+              'Watch on YouTube</a>'
+            : '<span style="color:var(--down)">Asset ' + esc(v.id) +
+              ' — no YouTube link</span>') +
+          '<span style="color:var(--muted)">' + int(v.impressions) +
+            ' impressions</span>' +
+        '</div>' +
+      '</div></div>';
+  }).join('') + '</div>';
+}
+
+/** Conversion actions for one video, collapsed by default to keep cards scannable. */
+function convBlock(v, k) {
+  var actions = v.conversionActions || [];
+  if (!actions.length) return '';
+  var inferred = v.conversionSource === 'ad';
+
+  return '<details class="convs"><summary>Conversion actions (' +
+      actions.length + ')' + (inferred ? ' — inferred' : '') + '</summary>' +
+      '<table><tbody>' + actions.map(function(a) {
+        return '<tr><td>' + esc(a.action) +
+            (a.category ? '<span class="meta">' + esc(a.category) + '</span>' : '') +
+            '</td><td class="num">' + dec(a.allConversions) + '</td>' +
+            '<td class="num">' + (a.allConvValue ? money(a.allConvValue) : '—') +
+            '</td></tr>';
+      }).join('') + '</tbody></table></details>';
+}
+
+/** Walks the YouTube thumbnail sizes until one loads. */
+function bindThumbs() {
+  var sizes = ['mqdefault', 'hqdefault', '0'];
+  var imgs = document.querySelectorAll('.shot img[data-yt]');
+  for (var i = 0; i < imgs.length; i++) {
+    imgs[i].onerror = function() {
+      var step = Number(this.getAttribute('data-step')) + 1;
+      if (step >= sizes.length) {
+        this.onerror = null;
+        this.style.display = 'none';
+        return;
+      }
+      this.setAttribute('data-step', String(step));
+      this.src = 'https://i.ytimg.com/vi/' + this.getAttribute('data-yt') +
+          '/' + sizes[step] + '.jpg';
+    };
+  }
+}
+
+/** Swaps the still for an inline player so review never leaves the page. */
+function bindPlays() {
+  var buttons = document.querySelectorAll('.play');
+  for (var i = 0; i < buttons.length; i++) {
+    buttons[i].onclick = function() {
+      var id = this.getAttribute('data-play');
+      this.parentNode.innerHTML =
+          '<iframe src="https://www.youtube-nocookie.com/embed/' +
+          encodeURIComponent(id) + '?autoplay=1&rel=0" ' +
+          'allow="autoplay; encrypted-media; fullscreen" ' +
+          'allowfullscreen title="Video preview"></iframe>';
+    };
+  }
+}
+
+function bindStars() {
+  var buttons = document.querySelectorAll('.star');
+  for (var i = 0; i < buttons.length; i++) {
+    buttons[i].onclick = function() {
+      var id = this.getAttribute('data-video');
+      if (LABELS[id]) {
+        delete LABELS[id];
+      } else {
+        LABELS[id] = true;
+      }
+      this.setAttribute('aria-pressed', String(!!LABELS[id]));
+      this.textContent = LABELS[id] ? '\u2605' : '\u2606';
+      persistLabels();
+      if (VIDEO_FILTER === 'starred') render();
+    };
+  }
+}
+
+var saveTimer = null;
+function persistLabels() {
+  if (!CAN_LABEL) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(function() {
+    if (typeof google === 'undefined' || !google.script || !google.script.run) {
+      toast('Stars kept for this session only');
+      return;
+    }
+    google.script.run
+        .withSuccessHandler(function() { toast('Stars saved'); })
+        .withFailureHandler(function() { toast('Could not save stars'); })
+        .saveLabels(JSON.stringify(LABELS));
+  }, 600);
+}
+
+// --- tables ---------------------------------------------------------------
+function perfColumns() {
+  var k = K();
+  return [
+    { key: 'impressions', label: 'Impr.', fmt: int },
+    { key: 'clicks', label: 'Clicks', fmt: int },
+    { key: 'cost', label: 'Spend', fmt: money },
+    { key: 'ctr', label: 'CTR', fmt: pct },
+    { key: 'cpc', label: 'CPC', fmt: money },
+    { key: 'cpm', label: 'CPM', fmt: money },
+    { key: k.conv, label: k.word, fmt: dec },
+    { key: k.cvr, label: 'Conv. rate', fmt: pct },
+    { key: k.cpa, label: 'Per action', fmt: money },
+    { key: k.roas, label: 'ROAS', fmt: function(v) { return dec(v) + 'x'; } },
+    { key: 'viewThrough', label: 'View-thru', fmt: int },
+    { key: 'videoViews', label: 'Views', fmt: int },
+    { key: 'viewRate', label: 'View rate', fmt: pct },
+    { key: 'p100', label: 'Watched in full', fmt: pct }
+  ];
+}
+
+function adCell(row) {
+  var thumb = row.thumb
+      ? '<img class="thumb" src="' + esc(row.thumb) + '" alt="" loading="lazy">'
+      : '<span class="thumb"></span>';
+  var links = [];
+  (row.videoLinks || []).forEach(function(v, i) {
+    links.push('<a href="' + esc(v.url) + '" target="_blank" rel="noopener">' +
+        'Video ' + (i + 1) + '</a>');
+  });
+  (row.imageUrls || []).forEach(function(u, i) {
+    links.push('<a href="' + esc(u) + '" target="_blank" rel="noopener">' +
+        'Image ' + (i + 1) + '</a>');
+  });
+  if (row.finalUrl) {
+    links.push('<a href="' + esc(row.finalUrl) + '" target="_blank" ' +
+        'rel="noopener">Landing page</a>');
+  }
+
+  var mixTotal = 0;
+  for (var key in (row.channelMix || {})) mixTotal += row.channelMix[key];
+  var mix = '';
+  if (mixTotal > 0) {
+    mix = '<div class="mix" title="Channel mix by spend">';
+    DATA.channelMix.forEach(function(c) {
+      var v = (row.channelMix || {})[c.channel] || 0;
+      if (v > 0) {
+        mix += '<i style="background:' + c.color + ';width:' +
+            (v / mixTotal * 100) + '%"></i>';
+      }
+    });
+    mix += '</div>';
+  }
+
+  return '<div class="row-flex">' + thumb + '<div><strong>' + esc(row.name) +
+      '</strong><span class="meta">' + esc(row.type) + ' · ' +
+      esc(row.campaign) + ' › ' + esc(row.adGroup) +
+      (row.approval && row.approval !== 'Approved'
+          ? ' · <span style="color:var(--down)">' + esc(row.approval) + '</span>'
+          : '') + '</span>' +
+      (links.length ? '<div class="linkrow">' + links.join('') + '</div>' : '') +
+      mix + '</div></div>';
+}
+
+function drawSettings() {
+  var settings = DATA.settings;
+  var packing = DATA.creativePacking;
+  document.getElementById('count').textContent =
+      ((settings || {}).campaigns || []).length + ' campaigns';
+
+  if (!settings || !(settings.campaigns || []).length) {
+    return '<div class="scroll"><div class="empty">No settings returned. Run ' +
+        'refresh to pull them.</div></div>';
+  }
+
+  var out = '';
+
+  if (packing && packing.multiVideoAds) {
+    out += '<div class="warnbox"><strong>' + packing.multiVideoAds + ' ad' +
+      (packing.multiVideoAds === 1 ? '' : 's') + ' carr' +
+      (packing.multiVideoAds === 1 ? 'ies' : 'y') + ' more than one video</strong>' +
+      ' — up to ' + packing.maxVideosInOneAd + ' in a single ad, affecting ' +
+      packing.videosAffected + ' video' +
+      (packing.videosAffected === 1 ? '' : 's') + '. Google reports one blended ' +
+      'watch-depth figure per ad, so none of those videos can be measured ' +
+      'individually. Building one ad per video costs nothing in delivery and ' +
+      'recovers completion rate and isolated conversion data for each creative.' +
+      '</div>';
+  }
+
+  out += '<div class="setgrid">' + settings.campaigns.map(function(c) {
+    function row(key, value, flag) {
+      return '<div class="setrow"><span class="k">' + esc(key) + '</span>' +
+          '<span class="v">' + value +
+          (flag ? '<span class="flagpill ' + flag[0] + '">' + esc(flag[1]) +
+              '</span>' : '') + '</span></div>';
+    }
+    var schedule = (c.schedule || []).length
+        ? c.schedule.map(function(s) {
+            var day = String(s.day || '');
+            return day.charAt(0) + day.slice(1, 3).toLowerCase() + ' ' +
+                s.start + '\u2013' + s.end;
+          }).join(', ')
+        : 'All day, every day';
+    var acquisitionFlag = /only|higher/i.test(c.acquisition)
+        ? ['on', 'set'] : ['off', 'default'];
+
+    return '<div class="setcard"><h3>' + esc(c.name) + '</h3>' +
+      '<div class="sub">' + esc(c.status) + ' \u00b7 since ' +
+        esc(c.startDate || 'unknown') + '</div>' +
+      row('Bidding', esc(c.bidding) + (c.target ? ' \u00b7 ' + esc(c.target) : '')) +
+      row('Daily budget', money(c.budget) +
+          (c.budgetShared ? ' (shared)' : '')) +
+      row('Delivery', esc(c.budgetDelivery || '—')) +
+      row('New vs existing', esc(c.acquisition), acquisitionFlag) +
+      row('Bids toward', esc((c.goals || []).join(', ') || 'Account default')) +
+      row('Ad schedule', esc(schedule),
+          (c.schedule || []).length ? ['on', 'restricted'] : null) +
+      row('Locations', esc((c.locations || []).slice(0, 3).join(', ') ||
+          'All locations') + ((c.locations || []).length > 3
+              ? ' +' + (c.locations.length - 3) : '')) +
+      row('Excluded locations', esc((c.excludedLocations || []).join(', ') || 'None')) +
+      row('Languages', esc((c.languages || []).join(', ') || 'All')) +
+      row('Excluded audiences',
+          esc((c.excludedAudiences || []).join(', ') || 'None'),
+          (c.excludedAudiences || []).length ? null : ['off', 'none']) +
+      ((c.automation || []).length
+        ? '<div class="setrow" style="display:block"><div class="k" ' +
+          'style="margin-bottom:6px">Asset optimisation</div>' +
+          c.automation.map(function(a) {
+            return '<div style="display:flex;justify-content:space-between;' +
+                'padding:3px 0"><span>' + esc(a.name) + '</span>' +
+                '<span class="flagpill ' + (a.on ? 'on' : 'off') + '">' +
+                (a.on ? 'ON' : 'OFF') + '</span></div>';
+          }).join('') + '</div>'
+        : '') +
+      '</div>';
+  }).join('') + '</div>';
+
+  var actions = settings.conversionActions || [];
+  if (actions.length) {
+    out += '<div class="subhead">Conversion action setup</div>' +
+      '<div class="scroll"><table><thead><tr><th>Action</th><th>Category</th>' +
+      '<th>In bidding column</th><th>View-through window</th>' +
+      '<th>Click window</th><th>Counting</th></tr></thead><tbody>' +
+      actions.map(function(a) {
+        return '<tr><td class="name"><strong>' + esc(a.name) + '</strong></td>' +
+          '<td class="name">' + esc(a.category) + '</td>' +
+          '<td class="num">' + (a.inColumn ? 'yes' : 'excluded') + '</td>' +
+          '<td class="num">' + (a.viewThroughDays
+              ? a.viewThroughDays + ' days'
+              : '<span style="color:var(--down)">none</span>') + '</td>' +
+          '<td class="num">' + (a.clickThroughDays ? a.clickThroughDays + ' days' : '—') +
+          '</td><td class="num">' + esc(a.counting || '—') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+  return out;
+}
+
+/** Conversion actions: rolled up first, then the campaign-level detail. */
+function drawConversions(term) {
+  var all = (DATA.conversionActions || []).filter(function(r) {
+    return !term ||
+        (r.action + ' ' + r.category + ' ' + r.campaign).toLowerCase()
+            .indexOf(term) !== -1;
+  });
+
+  document.getElementById('count').textContent = all.length + ' rows';
+
+  if (!(DATA.conversionActions || []).length) {
+    return '<div class="scroll"><div class="empty">No conversion action ' +
+        'breakdown returned. Segmenting by conversion action is unsupported ' +
+        'for some accounts — check the run log at the foot of this page.' +
+        '</div></div>';
+  }
+  if (!all.length) {
+    return '<div class="scroll"><div class="empty">Nothing matches that ' +
+        'filter.</div></div>';
+  }
+
+  var byAction = {};
+  all.forEach(function(r) {
+    var a = byAction[r.action];
+    if (!a) {
+      a = byAction[r.action] = { action: r.action, category: r.category,
+          allConversions: 0, allConvValue: 0, conversions: 0, convValue: 0,
+          campaigns: {} };
+    }
+    a.allConversions += r.allConversions;
+    a.allConvValue += r.allConvValue;
+    a.conversions += r.conversions;
+    a.convValue += r.convValue;
+    a.campaigns[r.campaign] = true;
+  });
+
+  var rolled = Object.keys(byAction).map(function(k) { return byAction[k]; })
+      .sort(function(a, b) { return b.allConversions - a.allConversions; });
+  var total = rolled.reduce(function(sum, r) { return sum + r.allConversions; }, 0);
+  var max = rolled.length ? rolled[0].allConversions : 0;
+
+  var summary = '<div class="subhead">Every action, all campaigns</div>' +
+    '<div class="scroll"><table><thead><tr>' +
+      '<th>Conversion action</th><th>Share</th><th>All conv.</th>' +
+      '<th>Value</th><th>In bidding column</th><th>Campaigns</th>' +
+    '</tr></thead><tbody>' +
+    rolled.map(function(r) {
+      var inBidding = r.conversions > 0;
+      return '<tr><td class="name"><strong>' + esc(r.action) + '</strong>' +
+        (r.category ? '<span class="meta">' + esc(r.category) + '</span>' : '') +
+        '</td>' +
+        '<td><span class="sharebar" style="width:' +
+          Math.max(2, (max ? r.allConversions / max : 0) * 90) + 'px"></span>' +
+          '<span class="meta">' + pct0(total ? r.allConversions / total : 0) +
+          ' of all</span></td>' +
+        '<td class="num">' + dec(r.allConversions) + '</td>' +
+        '<td class="num">' + (r.allConvValue ? money(r.allConvValue) : '—') + '</td>' +
+        '<td class="num">' + (inBidding ? dec(r.conversions) : 'excluded') + '</td>' +
+        '<td class="num">' + Object.keys(r.campaigns).length + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+
+  var detail = '<div class="subhead">Broken out by campaign</div>' +
+    '<div class="scroll"><table><thead><tr>' +
+      '<th>Conversion action</th><th>Campaign</th><th>All conv.</th>' +
+      '<th>Value</th><th>In bidding column</th>' +
+    '</tr></thead><tbody>' +
+    all.slice().sort(function(a, b) { return b.allConversions - a.allConversions; })
+      .map(function(r) {
+        return '<tr><td class="name"><strong>' + esc(r.action) + '</strong>' +
+          (r.category ? '<span class="meta">' + esc(r.category) + '</span>' : '') +
+          '</td><td class="name">' + esc(r.campaign) + '</td>' +
+          '<td class="num">' + dec(r.allConversions) + '</td>' +
+          '<td class="num">' + (r.allConvValue ? money(r.allConvValue) : '—') + '</td>' +
+          '<td class="num">' + (r.conversions > 0 ? dec(r.conversions) : 'excluded') +
+          '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+
+  return summary + detail;
+}
+
+var SURFACE_METRIC = 'cost';
+
+/** Metrics the surface donuts can switch between. */
+function surfaceMetrics() {
+  var k = K();
+  return [
+    { key: 'cost', label: 'Spend', fmt: money },
+    { key: k.conv, label: k.word, fmt: dec },
+    { key: 'impressions', label: 'Impressions', fmt: int },
+    { key: 'clicks', label: 'Clicks', fmt: int },
+    { key: 'videoViews', label: 'Video views', fmt: int }
+  ];
+}
+
+function activeMetric() {
+  var options = surfaceMetrics();
+  for (var i = 0; i < options.length; i++) {
+    if (options[i].key === SURFACE_METRIC) return options[i];
+  }
+  // The conversion key changes with the mode, so fall back to spend.
+  SURFACE_METRIC = 'cost';
+  return options[0];
+}
+
+/** Donut plus legend. Composition reads faster as an arc than as a bar list. */
+function donut(title, rows, labelKey, metric) {
+  var slices = rows.filter(function(r) { return (r[metric.key] || 0) > 0; })
+      .sort(function(a, b) { return b[metric.key] - a[metric.key]; });
+  var total = slices.reduce(function(sum, r) { return sum + r[metric.key]; }, 0);
+
+  if (!total) {
+    return '<div class="donutcard"><h3>' + esc(title) + '</h3>' +
+        '<div class="empty">No ' + esc(metric.label.toLowerCase()) +
+        ' recorded.</div></div>';
+  }
+
+  var radius = 54;
+  var circumference = 2 * Math.PI * radius;
+  var offset = 0;
+  var arcs = slices.map(function(r) {
+    var length = (r[metric.key] / total) * circumference;
+    var arc = '<circle cx="70" cy="70" r="' + radius + '" fill="none" ' +
+        'stroke="' + (r.color || '#8A8F9E') + '" stroke-width="23" ' +
+        'stroke-dasharray="' + length.toFixed(2) + ' ' +
+        (circumference - length).toFixed(2) + '" ' +
+        'stroke-dashoffset="' + (-offset).toFixed(2) + '" ' +
+        'transform="rotate(-90 70 70)"><title>' + esc(r[labelKey]) + ': ' +
+        esc(metric.fmt(r[metric.key])) + '</title></circle>';
+    offset += length;
+    return arc;
+  }).join('');
+
+  var legend = slices.map(function(r) {
+    return '<div class="row"><span class="dot" style="background:' +
+        (r.color || '#8A8F9E') + '"></span>' +
+        '<span class="nm">' + esc(r[labelKey]) + '</span>' +
+        '<span class="vl">' + metric.fmt(r[metric.key]) + '</span>' +
+        '<span class="sh">' + pct0(r[metric.key] / total) + '</span></div>';
+  }).join('');
+
+  return '<div class="donutcard"><h3>' + esc(title) + '</h3>' +
+    '<div class="donutrow">' +
+      '<svg width="140" height="140" viewBox="0 0 140 140" role="img" ' +
+      'aria-label="' + esc(title) + ' by ' + esc(metric.label) + '">' + arcs +
+      '<g class="donut-total"><text x="70" y="66" class="big">' +
+      esc(metric.fmt(total)) + '</text>' +
+      '<text x="70" y="84" class="small">' + esc(metric.label) + '</text></g>' +
+      '</svg>' +
+      '<div class="donutlegend">' + legend + '</div>' +
+    '</div></div>';
+}
+
+function drawSurfaces() {
+  var surfaces = DATA.surfaceMix || [];
+  var devices = DATA.deviceMix || [];
+  var metric = activeMetric();
+  document.getElementById('count').textContent =
+      surfaces.length + ' surfaces, ' + devices.length + ' screens';
+
+  if (!surfaces.length && !devices.length) {
+    return '<div class="scroll"><div class="empty">No surface breakdown ' +
+        'returned. Format segmentation is supported for Demand Gen and Video ' +
+        'campaigns only \u2014 check the run log at the foot of this page.' +
+        '</div></div>';
+  }
+
+  return '<div class="donutgrid">' +
+      (surfaces.length ? donut('Where the ads rendered', surfaces, 'surface', metric) : '') +
+      (devices.length ? donut('Which screens', devices, 'device', metric) : '') +
+      '</div>';
+}
+
+var VIEWS = {
+  videos: { label: 'Videos', custom: true,
+    rows: function() { return DATA.videos || []; } },
+  surfaces: { label: 'Surfaces', custom: true,
+    rows: function() { return DATA.surfaceMix || []; } },
+  settings: { label: 'Settings', custom: true,
+    rows: function() { return ((DATA.settings || {}).campaigns) || []; } },
+  conversions: { label: 'Conversions', custom: true,
+    rows: function() { return DATA.conversionActions || []; } },
+  ads: { label: 'Ads', rows: function() { return DATA.ads; },
+    first: { label: 'Ad', cell: adCell,
+      search: function(r) {
+        return [r.name, r.campaign, r.adGroup, r.type].join(' ');
+      } } },
+  audiences: { label: 'Audiences', rows: function() { return DATA.audiences; },
+    first: { label: 'Audience',
+      cell: function(r) {
+        return '<strong>' + esc(r.name) + '</strong><span class="meta">' +
+            esc(r.type) + ' · ' + esc(r.campaign) + ' › ' + esc(r.adGroup) +
+            '</span>';
+      },
+      search: function(r) {
+        return [r.name, r.type, r.campaign, r.adGroup].join(' ');
+      } } },
+  assets: { label: 'Assets', rows: function() { return DATA.assets; },
+    first: { label: 'Asset',
+      cell: function(r) {
+        var thumb = r.thumbUrl
+            ? '<img class="thumb" src="' + esc(r.thumbUrl) +
+              '" alt="" loading="lazy">'
+            : '<span class="thumb"></span>';
+        var cls = r.label === 'Best' ? 'best' : (r.label === 'Low' ? 'low' : '');
+        var link = r.viewUrl ? '<a href="' + esc(r.viewUrl) + '" target="_blank" ' +
+            'rel="noopener">Open</a>' : '';
+        return '<div class="row-flex">' + thumb + '<div><strong>' +
+            esc(r.text || r.type) + '</strong><span class="meta">' +
+            esc(r.fieldType) + ' · ' + esc(r.campaign) + '</span>' +
+            '<div class="linkrow"><span class="tag ' + cls + '">' +
+            esc(r.label) + '</span>' + link + '</div></div></div>';
+      },
+      search: function(r) {
+        return [r.text, r.type, r.fieldType, r.label, r.campaign].join(' ');
+      } } },
+  campaigns: { label: 'Campaigns', rows: function() { return DATA.campaigns; },
+    first: { label: 'Campaign',
+      cell: function(r) {
+        return '<strong>' + esc(r.name) + '</strong><span class="meta">' +
+            esc(r.status) + ' · ' + esc(r.bidding) +
+            (r.budget ? ' · ' + money(r.budget) + '/day' : '') + '</span>';
+      },
+      search: function(r) { return [r.name, r.status, r.bidding].join(' '); } } },
+  adGroups: { label: 'Ad groups', rows: function() { return DATA.adGroups; },
+    first: { label: 'Ad group',
+      cell: function(r) {
+        return '<strong>' + esc(r.name) + '</strong><span class="meta">' +
+            esc(r.campaign) + ' · ' + esc(r.status) + '</span>';
+      },
+      search: function(r) { return [r.name, r.campaign].join(' '); } } },
+  demographics: { label: 'Demographics',
+    rows: function() { return DATA.demographics; },
+    first: { label: 'Segment',
+      cell: function(r) {
+        return '<strong>' + esc(r.value) + '</strong><span class="meta">' +
+            esc(r.dimension) + ' · ' + esc(r.campaign) + '</span>';
+      },
+      search: function(r) {
+        return [r.value, r.dimension, r.campaign].join(' ');
+      } } },
+  placements: { label: 'Placements', rows: function() { return DATA.placements; },
+    first: { label: 'Placement',
+      cell: function(r) {
+        var link = r.url ? '<div class="linkrow"><a href="' + esc(r.url) +
+            '" target="_blank" rel="noopener">Open</a></div>' : '';
+        return '<strong>' + esc(r.name) + '</strong><span class="meta">' +
+            esc(r.type) + ' · ' + esc(r.campaign) + '</span>' + link;
+      },
+      search: function(r) { return [r.name, r.type, r.campaign].join(' '); } } },
+  daily: { label: 'Daily', rows: function() { return DATA.daily; },
+    first: { label: 'Date',
+      cell: function(r) { return '<strong>' + esc(r.date) + '</strong>'; },
+      search: function(r) { return r.date; } } }
+};
+
+var ACTIVE = 'videos';
+var SORT = { key: 'cost', asc: false };
+
+// Eleven flat tabs was too much to scan at once. Grouping by the question being
+// asked puts one row of five in front of the reader and keeps the rest one
+// click away rather than competing for attention.
+var GROUPS = [
+  { label: 'Creative', views: ['videos', 'ads', 'assets'] },
+  { label: 'Placement', views: ['surfaces', 'placements'] },
+  { label: 'Audience', views: ['audiences', 'demographics'] },
+  { label: 'Structure', views: ['campaigns', 'adGroups', 'settings'] },
+  { label: 'Outcomes', views: ['conversions', 'daily'] }
+];
+
+function groupOf(viewId) {
+  for (var i = 0; i < GROUPS.length; i++) {
+    if (GROUPS[i].views.indexOf(viewId) !== -1) return i;
+  }
+  return 0;
+}
+
+function buildPanels() {
+  var panels = document.getElementById('panels');
+  panels.innerHTML = '';
+  Object.keys(VIEWS).forEach(function(id) {
+    var panel = document.createElement('div');
+    panel.className = 'panel';
+    panel.id = 'panel-' + id;
+    panels.appendChild(panel);
+  });
+}
+
+function selectView(id) {
+  ACTIVE = id;
+  SORT = { key: 'cost', asc: false };
+  buildNav();
+  buildToolbar();
+  render();
+}
+
+function buildNav() {
+  var tabs = document.getElementById('tabs');
+  var subtabs = document.getElementById('subtabs');
+  var activeGroup = groupOf(ACTIVE);
+  tabs.innerHTML = '';
+  subtabs.innerHTML = '';
+
+  GROUPS.forEach(function(group, index) {
+    var available = group.views.filter(function(id) { return VIEWS[id]; });
+    if (!available.length) return;
+
+    var btn = document.createElement('button');
+    btn.textContent = group.label;
+    btn.setAttribute('aria-selected', String(index === activeGroup));
+    btn.onclick = function() { selectView(available[0]); };
+    tabs.appendChild(btn);
+  });
+
+  var current = GROUPS[activeGroup].views.filter(function(id) { return VIEWS[id]; });
+  if (current.length < 2) return;
+
+  current.forEach(function(id) {
+    var view = VIEWS[id];
+    var btn = document.createElement('button');
+    btn.innerHTML = view.label + ' <span class="tally">' + view.rows().length +
+        '</span>';
+    btn.setAttribute('aria-selected', String(id === ACTIVE));
+    btn.onclick = function() { selectView(id); };
+    subtabs.appendChild(btn);
+  });
+}
+
+function buildToolbar() {
+  var bar = document.getElementById('toolbar');
+  var isVideo = ACTIVE === 'videos';
+
+  // Surfaces has no name search; it has a metric selector driving the donuts.
+  if (ACTIVE === 'settings') {
+    bar.innerHTML = '<span class="count" id="count"></span>';
+    return;
+  }
+
+  if (ACTIVE === 'surfaces') {
+    bar.innerHTML = '<select id="surfaceMetric" aria-label="Metric shown">' +
+      surfaceMetrics().map(function(metric) {
+        return '<option value="' + esc(metric.key) + '"' +
+            (metric.key === SURFACE_METRIC ? ' selected' : '') + '>Show ' +
+            esc(metric.label.toLowerCase()) + '</option>';
+      }).join('') + '</select><span class="count" id="count"></span>';
+    document.getElementById('surfaceMetric').onchange = function() {
+      SURFACE_METRIC = this.value;
+      render();
+    };
+    return;
+  }
+
+  bar.innerHTML =
+    '<input id="search" type="search" placeholder="Filter by name">' +
+    (isVideo
+      ? '<div class="chips" id="videoChips"></div>' +
+        '<select id="videoSort">' +
+          '<option value="cost">Sort by spend</option>' +
+          '<option value="conv">Sort by conversions</option>' +
+          '<option value="cpa">Sort by cost per action</option>' +
+          '<option value="viewRate">Sort by view rate</option>' +
+          '<option value="p100">Sort by full watches</option>' +
+          '<option value="impressions">Sort by impressions</option>' +
+        '</select>'
+      : '') +
+    '<span class="count" id="count"></span>';
+
+  document.getElementById('search').addEventListener('input', render);
+
+  if (isVideo) {
+    document.getElementById('videoChips').innerHTML =
+        VIDEO_FILTERS.map(function(f) {
+          return '<button class="filter" data-filter="' + f[0] +
+              '" aria-pressed="' + (VIDEO_FILTER === f[0]) + '">' + f[1] +
+              '</button>';
+        }).join('');
+    var chips = document.querySelectorAll('#videoChips .filter');
+    for (var i = 0; i < chips.length; i++) {
+      chips[i].onclick = function() {
+        VIDEO_FILTER = this.getAttribute('data-filter');
+        buildToolbar();
+        render();
+      };
+    }
+    var sel = document.getElementById('videoSort');
+    sel.value = VIDEO_SORT;
+    sel.onchange = function() { VIDEO_SORT = this.value; render(); };
+  }
+}
+
+function render() {
+  Object.keys(VIEWS).forEach(function(id) {
+    document.getElementById('panel-' + id).className =
+        'panel' + (id === ACTIVE ? ' active' : '');
+  });
+
+  var panel = document.getElementById('panel-' + ACTIVE);
+  var searchBox = document.getElementById('search');
+  var term = searchBox ? searchBox.value.toLowerCase().trim() : '';
+
+  if (ACTIVE === 'videos') {
+    panel.innerHTML = drawVideos(term);
+    bindStars();
+    bindThumbs();
+    bindPlays();
+    return;
+  }
+
+  if (ACTIVE === 'surfaces') {
+    panel.innerHTML = drawSurfaces();
+    return;
+  }
+
+  if (ACTIVE === 'settings') {
+    panel.innerHTML = drawSettings();
+    return;
+  }
+
+  if (ACTIVE === 'conversions') {
+    panel.innerHTML = drawConversions(term);
+    return;
+  }
+
+  var view = VIEWS[ACTIVE];
+  var PERF = perfColumns();
+  var rows = view.rows().slice();
+
+  if (CHANNEL_FILTER && ACTIVE === 'ads') {
+    rows = rows.filter(function(r) {
+      return (r.channelMix || {})[CHANNEL_FILTER] > 0;
+    });
+  }
+  if (term) {
+    rows = rows.filter(function(r) {
+      return view.first.search(r).toLowerCase().indexOf(term) !== -1;
+    });
+  }
+
+  rows.sort(function(a, b) {
+    var x = SORT.key === '_first' ? view.first.search(a) : (a[SORT.key] || 0);
+    var y = SORT.key === '_first' ? view.first.search(b) : (b[SORT.key] || 0);
+    if (x === y) return 0;
+    return (x > y ? 1 : -1) * (SORT.asc ? 1 : -1);
+  });
+
+  document.getElementById('count').textContent = rows.length + ' rows' +
+      (CHANNEL_FILTER && ACTIVE === 'ads' ? ' · ' + CHANNEL_FILTER : '');
+
+  if (!rows.length) {
+    var why = 'Nothing matches. Clear the filter, or widen the window in the ' +
+        'Settings tab and refresh.';
+    if (ACTIVE === 'placements' && !view.rows().length) {
+      why = DATA.placementsSkipped
+          ? 'Placements are switched off. Set "Include placements" to TRUE in ' +
+            'the Settings tab and refresh. It is the slowest and least ' +
+            'reliable slice for Demand Gen, which is why it ships off.'
+          : 'Placements were requested but returned nothing. Demand Gen ' +
+            'placement reporting is patchy \u2014 check the run log at the ' +
+            'foot of this page for whether the API refused the query.';
+    }
+    panel.innerHTML = '<div class="scroll"><div class="empty">' + why +
+        '</div></div>';
+    return;
+  }
+
+  var head = '<tr><th data-key="_first">' + view.first.label + '</th>' +
+      PERF.map(function(col) {
+        var cls = col.key === SORT.key
+            ? ' class="sorted' + (SORT.asc ? ' asc' : '') + '"' : '';
+        return '<th' + cls + ' data-key="' + col.key + '">' + col.label + '</th>';
+      }).join('') + '</tr>';
+
+  var body = rows.map(function(r) {
+    return '<tr><td class="name">' + view.first.cell(r) + '</td>' +
+        PERF.map(function(col) {
+          var v = r[col.key];
+          var blank = !v && (col.label === 'Per action' || col.label === 'ROAS' ||
+              col.key === 'cpc');
+          return '<td class="num">' + (blank ? '—' : col.fmt(v)) + '</td>';
+        }).join('') + '</tr>';
+  }).join('');
+
+  panel.innerHTML = '<div class="scroll"><table><thead>' + head +
+      '</thead><tbody>' + body + '</tbody></table></div>' +
+      (ACTIVE === 'daily' ? sparkline() : '');
+
+  var headers = panel.querySelectorAll('th');
+  for (var i = 0; i < headers.length; i++) {
+    headers[i].onclick = function() {
+      var key = this.getAttribute('data-key');
+      SORT = { key: key, asc: SORT.key === key ? !SORT.asc : false };
+      render();
+    };
+  }
+}
+
+function sparkline() {
+  var max = 0;
+  DATA.daily.forEach(function(d) { if (d.cost > max) max = d.cost; });
+  if (!max) return '';
+  return '<div style="margin-top:22px">' +
+      '<div class="section-label">Daily spend</div><div class="spark">' +
+      DATA.daily.map(function(d) {
+        return '<i style="height:' + (d.cost / max * 100) + '%" title="' +
+            esc(d.date) + ': ' + money(d.cost) + '"></i>';
+      }).join('') + '</div></div>';
+}
+
+document.getElementById('note').innerHTML =
+    '<b>How to read this.</b> Rates are calculated from raw counters, so totals ' +
+    'stay accurate when rows are grouped. Completion rates come from Google per ' +
+    'entity; account-level figures are impression-weighted. Google does not ' + 'expose watch depth per video asset, so any funnel marked <em>from ad ' + 'level</em> is inferred from ads carrying exactly one video. View-through ' +
+    'conversions are reported separately and sit outside cost per action and ' +
+    'ROAS. Videos are rolled up across every ad group they run in. Legacy ' +
+    'Demand Gen video ads are not exposed by the API, so their creatives are ' +
+    'missing while their spend still appears at campaign level.' +
+    (DATA.runLog && DATA.runLog.length
+        ? '<br><br><b>Collected:</b> ' + DATA.runLog.map(function(r) {
+            return esc(r[0]) + ' — ' + esc(r[1]);
+          }).join(' · ')
+        : '');
+
+drawReadout();
+drawSpectrum();
+drawMode();
+drawKpis();
+buildPanels();
+buildNav();
+buildToolbar();
+render();
+}
+</script>
+</body>
+</html>
