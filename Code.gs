@@ -3014,8 +3014,10 @@ var DECK = {
   // past this point so the deck finishes instead of dying mid-build.
   TIME_BUDGET_SECONDS: 200,
   // Turn any section off without touching the builder.
-  // Rows on the one-page creative scorecard before it spills to a second page.
-  CREATIVE_ROWS_PER_PAGE: 11,
+  // Thumbnails on the one-page creative grid before it spills to another page.
+  // 4 columns x 2 rows fits legibly on a 10in slide.
+  CREATIVE_COLS: 4,
+  CREATIVE_ROWS_PER_PAGE: 8,
   SECTIONS: {
     headline: true, structure: true, settings: true, packing: true,
     channels: true, surfaces: true,
@@ -3476,55 +3478,79 @@ function deckForAccount_(data) {
   // are an opt-in appendix (DECK.SECTIONS.creativeDetail).
   var scorecard = (data.videos || []).slice(0, DECK.CREATIVE_ROWS_PER_PAGE * 3);
 
-  function quart(v, key) {
-    return (v.p25 || v.p50 || v.p75 || v.p100) ? pct(v[key]) : '—';
+  function watchStr(v) {
+    if (!(v.p25 || v.p50 || v.p75 || v.p100)) return 'watch —';
+    function w(k) { return Math.round((v[k] || 0) * 100); }
+    return 'watch ' + w('p25') + '/' + w('p50') + '/' + w('p75') + '/' +
+        w('p100') + '%';
   }
 
-  function scorecardPage(chunk, pageIndex, pageCount) {
+  /** One creative tile: thumbnail plus four compact metric lines. */
+  function creativeTile(slide, v, x, y, tileW, thumbH) {
+    var placed = false;
+    if (v.thumb) {
+      try { slide.insertImage(v.thumb, x, y, tileW, thumbH); placed = true; }
+      catch (e) { placed = false; }
+    }
+    if (!placed) {
+      var ph = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, x, y, tileW, thumbH);
+      ph.getFill().setSolidFill(T.band);
+      ph.getBorder().setTransparent();
+      box(slide, 'no thumbnail', x, y + thumbH / 2 - 6, tileW, 12, 7, false,
+          T.muted);
+    }
+    var ai = videoSource_(v.title) !== 'Advertiser';
+    if (ai) {
+      // Small badge in the thumbnail corner flags the AI-modified cuts.
+      var badge = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, x + 4, y + 4,
+          58, 14);
+      badge.getFill().setSolidFill(T.accent);
+      badge.getBorder().setTransparent();
+      box(slide, 'AI cut', x + 4, y + 4, 58, 14, 7, true, BRAND.white);
+    }
+
+    var ty = y + thumbH + 3;
+    box(slide, String(v.title || '').slice(0, 34), x, ty, tileW, 12, 8, true,
+        T.ink);
+    box(slide, (ai ? 'Enhanced by Google AI' : 'Advertiser') + '  ·  VR ' +
+        pct(v.viewRate), x, ty + 12, tileW, 11, 7, false,
+        ai ? T.accent : T.muted);
+    box(slide, watchStr(v), x, ty + 22, tileW, 11, 7, false, T.muted);
+    box(slide, dec(v.conversions) + ' conv · ' + int(v.viewThrough) + ' vt · $' +
+        fmtMoney(v.cost) + ' · ' + int(v.impressions) + ' impr',
+        x, ty + 32, tileW, 11, 7, false, T.muted);
+  }
+
+  function creativeGridPage(chunk, pageIndex, pageCount) {
     var slide = deck.appendSlide(SlidesApp.PredefinedLayout.BLANK);
     header(slide, 'Creative scorecard' +
         (pageCount > 1 ? '  (' + (pageIndex + 1) + ' of ' + pageCount + ')' : ''));
-    box(slide, scorecard.length + ' creatives, highest spend first  ·  ' +
-        'source, attention through the 25–100% funnel, and what converted',
-        M, 70, W - M * 2, 16, 10, false, T.muted);
+    box(slide, scorecard.length + ' creatives, highest spend first  ·  every ' +
+        'creative on one page, not one slide each', M, 70, W - M * 2, 16, 10,
+        false, T.muted);
 
-    var reserved = pageIndex === 0 ? commentary(slide, 'creative') : 0;
-    var headers = ['Creative', 'Src', 'Impr', 'Cost', 'View', '25%', '50%',
-                   '75%', '100%', 'Conv', 'V-thru'];
-    var rows = chunk.map(function(v) {
-      return [
-        String(v.title || '').slice(0, 30),
-        videoSource_(v.title) === 'Advertiser' ? 'Adv' : 'AI',
-        int(v.impressions), '$' + fmtMoney(v.cost), pct(v.viewRate),
-        quart(v, 'p25'), quart(v, 'p50'), quart(v, 'p75'), quart(v, 'p100'),
-        dec(v.conversions), int(v.viewThrough)
-      ];
+    var note = pageIndex === 0 ? (notes['creative'] || '') : '';
+    var gridTop = 92;
+    if (note) {
+      box(slide, '▶  ' + note, M, 88, W - M * 2, 14, 9, false, T.accent);
+      gridTop = 108;
+    }
+
+    var cols = DECK.CREATIVE_COLS;
+    var gx = 14, gy = 14;
+    var tileW = (W - M * 2 - (cols - 1) * gx) / cols;
+    var thumbH = Math.round(tileW * 9 / 16);
+    var rowInc = thumbH + 3 + 43 + gy;
+
+    chunk.forEach(function(v, i) {
+      var col = i % cols, row = Math.floor(i / cols);
+      creativeTile(slide, v, M + col * (tileW + gx), gridTop + row * rowInc,
+          tileW, thumbH);
     });
 
-    var top = 92;
-    var height = Math.min(H - top - reserved - 26, 22 + rows.length * 23);
-    var table = slide.insertTable(rows.length + 1, headers.length,
-        M, top, W - M * 2, height);
-    headers.forEach(function(head, c) {
-      var cell = table.getCell(0, c);
-      cell.getText().setText(String(head));
-      cell.getText().getTextStyle().setFontSize(8).setBold(true)
-          .setForegroundColor(T.muted);
-    });
-    rows.forEach(function(row, r) {
-      row.forEach(function(value, c) {
-        var cell = table.getCell(r + 1, c);
-        cell.getText().setText(String(value));
-        var style = cell.getText().getTextStyle().setFontSize(8.5)
-            .setForegroundColor(T.ink);
-        if (c === 1) style.setBold(true).setForegroundColor(
-            row[1] === 'AI' ? T.accent : T.muted);
-      });
-    });
-    box(slide, 'Src: Adv = advertiser upload · AI = Enhanced by Google AI (' +
-        'shortened/resized cuts). 25–100% = share of impressions reaching that ' +
-        'point in the video. V-thru = view-through conversions.',
-        M, top + height + 6, W - M * 2, 20, 8, false, T.muted);
+    box(slide, 'AI cut = Enhanced by Google AI (shortened/resized). VR = view ' +
+        'rate. watch = share reaching 25/50/75/100%. vt = view-through conv.',
+        M, H - 16, W - M * 2, 12, 7, false, T.muted);
     return slide;
   }
 
@@ -3535,7 +3561,7 @@ function deckForAccount_(data) {
       (function(pageIndex) {
         section('Creative scorecard' + (pages > 1 ? ' ' + (pageIndex + 1) : ''),
             true, function() {
-          scorecardPage(scorecard.slice(pageIndex * per, pageIndex * per + per),
+          creativeGridPage(scorecard.slice(pageIndex * per, pageIndex * per + per),
               pageIndex, pages);
         });
       })(pg);

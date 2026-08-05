@@ -549,34 +549,37 @@
   .slide .note-state { font-size: 12px; color: var(--up); opacity: 0; transition: opacity .2s; }
   .slide .note-state.show { opacity: 1; }
 
-  /* --- Creative scorecard (one page) ----------------------------------- */
-  .scorecard { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-  .scorecard th {
-    text-align: right; padding: 7px 8px; color: var(--muted); font-weight: 600;
-    border-bottom: 2px solid var(--rule); white-space: nowrap; font-size: 11px;
+  /* --- Creative scorecard (one page, thumbnail grid) ------------------- */
+  .cregrid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 14px;
   }
-  .scorecard th.l, .scorecard td.l { text-align: left; }
-  .scorecard td {
-    text-align: right; padding: 8px; border-bottom: 1px solid var(--rule);
-    color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums;
+  .cretile { min-width: 0; }
+  .cretile .shot {
+    position: relative; aspect-ratio: 16/9; border-radius: 8px;
+    overflow: hidden; background: var(--wash); border: 1px solid var(--rule);
   }
-  .scorecard tr:last-child td { border-bottom: none; }
-  .scorecard .cre { display: flex; align-items: center; gap: 10px; }
-  .scorecard .cre img {
-    width: 60px; height: 34px; object-fit: cover; border-radius: 5px;
-    background: var(--wash); flex: none;
+  .cretile .shot img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
   }
-  .scorecard .cre .t { min-width: 0; }
-  .scorecard .cre .name {
-    font-weight: 600; color: var(--ink); overflow: hidden;
-    text-overflow: ellipsis; white-space: nowrap; max-width: 260px;
+  .cretile .badge {
+    position: absolute; top: 6px; left: 6px; background: var(--accent);
+    color: #fff; font-size: 10px; font-weight: 700; letter-spacing: .03em;
+    padding: 2px 6px; border-radius: 5px;
   }
-  .scorecard .src { font-size: 11px; color: var(--muted); }
-  .scorecard .src.ai { color: var(--accent); font-weight: 600; }
-  .scorecard .q { color: var(--muted); }
-  .scorecard tfoot td {
-    color: var(--muted); font-size: 11px; text-align: left; padding-top: 8px;
-    border: none;
+  .cretile h5 {
+    margin: 7px 0 2px; font-size: 12.5px; font-weight: 600; color: var(--ink);
+    line-height: 1.25; overflow: hidden; text-overflow: ellipsis;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .cretile .src { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+  .cretile .src.ai { color: var(--accent); font-weight: 600; }
+  .cretile .m {
+    font-size: 11px; color: var(--muted); line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+  }
+  .cregrid-foot {
+    grid-column: 1 / -1; font-size: 11px; color: var(--muted); margin-top: 2px;
   }
 
   @media print {
@@ -1767,37 +1770,36 @@ function scorecardHtml(videos) {
   if (!videos.length) {
     return '<p class="meta">No creatives with delivery in this window.</p>';
   }
-  function q(v, key) {
-    var has = v.p25 || v.p50 || v.p75 || v.p100;
-    return '<td class="q">' + (has ? pct0(v[key]) : '—') + '</td>';
+  function watch(v) {
+    if (!(v.p25 || v.p50 || v.p75 || v.p100)) return 'watch —';
+    return 'watch ' + pct0(v.p25) + ' / ' + pct0(v.p50) + ' / ' +
+        pct0(v.p75) + ' / ' + pct0(v.p100);
   }
-  var rows = videos.map(function(v) {
+  var tiles = videos.map(function(v) {
     var ai = (v.source || '') !== 'Advertiser';
-    var thumb = v.thumb
+    var shot = v.thumb
         ? '<img src="' + esc(v.thumb) + '" alt="" loading="lazy">'
-        : '<span class="thumb"></span>';
-    return '<tr>' +
-      '<td class="l"><div class="cre">' + thumb + '<div class="t">' +
-        '<div class="name">' + esc(v.title) + '</div>' +
-        '<div class="src ' + (ai ? 'ai' : '') + '">' +
-          (ai ? 'Enhanced by Google AI' : 'Advertiser') + '</div>' +
-      '</div></div></td>' +
-      '<td>' + int(v.impressions) + '</td>' +
-      '<td>' + money(v.cost) + '</td>' +
-      '<td>' + pct(v.viewRate) + '</td>' +
-      q(v, 'p25') + q(v, 'p50') + q(v, 'p75') + q(v, 'p100') +
-      '<td>' + dec(v.conversions) + '</td>' +
-      '<td>' + int(v.viewThrough) + '</td>' +
-    '</tr>';
+        : '';
+    var badge = ai ? '<span class="badge">AI cut</span>' : '';
+    var link = v.url
+        ? '<a href="' + esc(v.url) + '" target="_blank" rel="noopener">' +
+          esc(v.title) + '</a>'
+        : esc(v.title);
+    return '<div class="cretile">' +
+      '<div class="shot">' + shot + badge + '</div>' +
+      '<h5>' + link + '</h5>' +
+      '<div class="src ' + (ai ? 'ai' : '') + '">' +
+        (ai ? 'Enhanced by Google AI' : 'Advertiser') + ' · VR ' +
+        pct(v.viewRate) + '</div>' +
+      '<div class="m">' + watch(v) + '</div>' +
+      '<div class="m">' + dec(v.conversions) + ' conv · ' + int(v.viewThrough) +
+        ' vt · ' + money(v.cost) + ' · ' + int(v.impressions) + ' impr</div>' +
+    '</div>';
   }).join('');
-  return '<div style="overflow-x:auto"><table class="scorecard">' +
-    '<thead><tr><th class="l">Creative</th><th>Impr</th><th>Cost</th>' +
-    '<th>View rate</th><th>25%</th><th>50%</th><th>75%</th><th>100%</th>' +
-    '<th>Conv</th><th>V-thru</th></tr></thead><tbody>' + rows + '</tbody>' +
-    '<tfoot><tr><td colspan="10">Every creative on one page — this is the ' +
-    'slide, not one slide per video. 25–100% = share of impressions reaching ' +
-    'that point in the video. V-thru = view-through conversions.</td></tr>' +
-    '</tfoot></table></div>';
+  return '<div class="cregrid">' + tiles +
+    '<div class="cregrid-foot">Every creative on one page — this is the slide, ' +
+    'not one slide per video. VR = view rate · watch = share reaching ' +
+    '25/50/75/100% · vt = view-through conversions.</div></div>';
 }
 
 function drawStoryboard() {
