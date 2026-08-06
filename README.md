@@ -79,12 +79,20 @@ settings are omitted from the deck rather than shown as a loud "review".
 ### The deck flow
 
 1. **Build slide deck** (header button) → a rough, on-brand Google Slides deck
-   built from the cached pull. Export it from Google Slides as PowerPoint.
-2. **Copy deck design prompt** → a per-account, Lockhern-branded prompt carrying
-   the POV, brand system, findings, your storyboard notes, and a machine-readable
-   creative appendix.
-3. Paste the prompt to Claude with the `.pptx` attached → the polished,
-   client-ready branded deck. See `prompts/lockhern-deck.md`.
+   built from the cached pull. When it finishes, the dashboard prints the exact
+   next steps.
+2. Export the rough deck: **File → Download → Microsoft PowerPoint (.pptx)**.
+3. **Download data (.xlsx)** (header button) → one-click export of the full data
+   Sheet as a real `.xlsx` (uses the `drive.readonly` scope). This is the
+   authoritative dataset for the build.
+4. Screenshot each campaign's settings, the ad-group settings, and the ad-group
+   audience (inclusions + exclusions) in Google Ads.
+5. **Copy deck design prompt** → a per-account, Lockhern-branded prompt carrying
+   the POV, brand system, findings, storyboard notes, landing pages, and a
+   machine-readable creative appendix.
+6. In **Claude (Opus)**, paste the prompt and attach the `.pptx`, the `.xlsx`,
+   the screenshots, and the logo files → the polished, client-ready branded deck.
+   See `prompts/lockhern-deck.md`.
 
 ## Brand assets (logos)
 

@@ -3502,6 +3502,35 @@ function buildDeckForWeb() {
   }
 }
 
+/**
+ * Export the whole bound spreadsheet as a real .xlsx and hand the bytes to the
+ * dashboard as base64, so "Download data" is one click. Uses the docs export
+ * endpoint with the script's OAuth token (drive.readonly scope), which avoids
+ * having to enable the Drive Advanced Service.
+ */
+function exportXlsx() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) return { ok: false, error: 'No bound spreadsheet.' };
+  try {
+    var url = 'https://docs.google.com/spreadsheets/d/' + ss.getId() +
+        '/export?format=xlsx';
+    var resp = UrlFetchApp.fetch(url, {
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+      muteHttpExceptions: true
+    });
+    if (resp.getResponseCode() !== 200) {
+      return { ok: false, error: 'Export failed (' + resp.getResponseCode() +
+          '). Re-run installTrigger to grant Drive access.' };
+    }
+    var name = (ss.getName() || 'Demand Gen audit').replace(/[\\/:*?"<>|]/g, ' ') +
+        '.xlsx';
+    return { ok: true, name: name,
+             b64: Utilities.base64Encode(resp.getBlob().getBytes()) };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e).slice(0, 200) };
+  }
+}
+
 function buildDeck() {
   loadSettings_();
   var accounts = cachedAccounts_();

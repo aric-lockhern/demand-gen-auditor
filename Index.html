@@ -645,6 +645,18 @@
     outline: none; border-color: var(--accent);
     box-shadow: 0 0 0 3px rgba(49,122,224,.12);
   }
+  .nextsteps {
+    margin-top: 12px; background: var(--wash); border: 1px solid var(--rule);
+    border-radius: 12px; padding: 14px 18px;
+  }
+  .nextsteps .ns-h {
+    font-weight: 700; color: var(--ink); margin-bottom: 6px; font-size: 14px;
+  }
+  .nextsteps ol { margin: 0; padding-left: 20px; }
+  .nextsteps li {
+    font-size: 13.5px; color: var(--ink-soft); line-height: 1.6;
+    margin-bottom: 3px;
+  }
 
   @media print {
     nav.tabs, nav.subtabs, .toolbar, .modebar, .star, .story-actions,
@@ -749,6 +761,7 @@ document.getElementById('root').innerHTML =
       '<button class="briefbtn" id="briefBtn">Copy analysis brief</button>' +
       '<button class="briefbtn" id="promptBtn">Copy deck design prompt</button>' +
       '<button class="briefbtn" id="deckBtn">Build slide deck</button>' +
+      '<button class="briefbtn" id="xlsxBtn">Download data (.xlsx)</button>' +
     '</div>' +
     '<div class="deckwrap" id="deckWrap">' +
       '<div class="progress"><i id="deckBar"></i></div>' +
@@ -909,12 +922,29 @@ document.getElementById('deckBtn').onclick = function() {
           return;
         }
         deckSetProgress(1, 'Deck ready');
-        result.innerHTML = response.urls.map(function(url, i) {
+        var links = response.urls.map(function(url, i) {
           return '<a class="decklink" href="' + esc(url) + '" target="_blank" ' +
-              'rel="noopener">Open slide deck' +
+              'rel="noopener">Open rough deck' +
               (response.urls.length > 1 ? ' ' + (i + 1) : '') + ' \u2192</a>';
         }).join('<br>');
-        toast('Slide deck ready');
+        result.innerHTML = links +
+          '<div class="nextsteps"><div class="ns-h">Next: turn this into the ' +
+          'branded client deck</div><ol>' +
+          '<li>Open the rough deck above. <b>File &rsaquo; Download &rsaquo; ' +
+          'Microsoft PowerPoint (.pptx)</b>.</li>' +
+          '<li>Click <b>Download data (.xlsx)</b> above to grab the full ' +
+          'dataset.</li>' +
+          '<li>In Google Ads, screenshot each campaign\u2019s settings, the ' +
+          'ad-group settings, and the ad-group audience (showing inclusions and ' +
+          'exclusions).</li>' +
+          '<li>Click <b>Copy deck design prompt</b> above.</li>' +
+          '<li>Open <b>Claude</b> (use Opus for best design). Paste the prompt, ' +
+          'and attach the <b>.pptx</b>, the <b>.xlsx</b>, your <b>screenshots</b>, ' +
+          'and the Lockhern <b>logo files</b>.</li>' +
+          '<li>Claude will reply with the three summary findings and its design ' +
+          'direction, then build the branded <b>.pptx</b>. Review it and iterate.' +
+          '</li></ol></div>';
+        toast('Rough deck ready');
       })
       .withFailureHandler(function(error) {
         finish();
@@ -924,6 +954,34 @@ document.getElementById('deckBtn').onclick = function() {
             '</div>';
       })
       .buildDeckForWeb();
+};
+
+document.getElementById('xlsxBtn').onclick = function() {
+  var button = this;
+  button.disabled = true;
+  toast('Exporting spreadsheet…');
+  google.script.run
+      .withSuccessHandler(function(res) {
+        button.disabled = false;
+        if (!res || !res.ok) { toast((res && res.error) || 'Export failed'); return; }
+        try {
+          var bin = atob(res.b64), len = bin.length, bytes = new Uint8Array(len);
+          for (var i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+          var blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-' +
+              'officedocument.spreadsheetml.sheet' });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url; a.download = res.name || 'audit-data.xlsx';
+          document.body.appendChild(a); a.click();
+          setTimeout(function() { URL.revokeObjectURL(url); a.remove(); }, 1500);
+          toast('Downloaded ' + (res.name || 'data.xlsx'));
+        } catch (e) { toast('Download blocked by the browser'); }
+      })
+      .withFailureHandler(function(e) {
+        button.disabled = false;
+        toast('Export failed: ' + (e && e.message ? e.message : String(e)));
+      })
+      .exportXlsx();
 };
 
 // --- plain-language read-out ---------------------------------------------
