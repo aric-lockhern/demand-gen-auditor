@@ -225,6 +225,72 @@ var BRAND = {
 /** Strip the leading '#' for tools (pptxgenjs) that reject it. */
 function brandHex_(key) { return String(BRAND[key] || '').replace('#', ''); }
 
+// Resolved logo data URIs, cached per execution so a page load or deck build
+// reads Drive at most once.
+var LOGO_CACHE_ = null;
+
+/** Extract a Drive file/folder ID from a bare ID or a share URL. */
+function driveId_(s) {
+  s = String(s || '').trim();
+  if (!s) return '';
+  var m = s.match(/\/(?:folders|d)\/([a-zA-Z0-9_-]+)/) ||
+          s.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m) return m[1];
+  return /^[a-zA-Z0-9_-]{16,}$/.test(s) ? s : '';
+}
+
+function dataUri_(file) {
+  if (!file) return '';
+  try {
+    var b = file.getBlob();
+    return 'data:' + (b.getContentType() || 'image/png') + ';base64,' +
+        Utilities.base64Encode(b.getBytes());
+  } catch (e) { return ''; }
+}
+
+/**
+ * Resolve the Lockhern logos from the Drive folder named in Settings, so they
+ * never have to be uploaded. Files are classified by name: one containing
+ * "white" is the reversed logo for the blue slides, one containing
+ * "mark"/"monogram"/"icon" is the LD glyph, the rest is the full-colour logo.
+ * Returns data URIs; missing ones stay empty and callers fall back to the
+ * wordmark. Needs the drive.readonly scope.
+ */
+function brandLogos_() {
+  if (LOGO_CACHE_) return LOGO_CACHE_;
+  var out = { logoColor: '', logoWhite: '', logoMark: '' };
+  var folderId = driveId_(readSetting_('logos drive folder id', ''));
+  if (folderId) {
+    try {
+      var files = DriveApp.getFolderById(folderId).getFiles();
+      var pick = { color: null, white: null, mark: null };
+      while (files.hasNext()) {
+        var f = files.next();
+        if (String(f.getMimeType() || '').indexOf('image/') !== 0) continue;
+        var name = f.getName().toLowerCase();
+        if (/white|reverse|knockout/.test(name)) { if (!pick.white) pick.white = f; }
+        else if (/mark|mono|icon|glyph|badge/.test(name)) { if (!pick.mark) pick.mark = f; }
+        else if (!pick.color) pick.color = f;
+      }
+      out.logoColor = dataUri_(pick.color);
+      out.logoWhite = dataUri_(pick.white);
+      out.logoMark = dataUri_(pick.mark);
+    } catch (e) {
+      // Folder unreadable or not shared. Fall back to the wordmark silently.
+    }
+  }
+  LOGO_CACHE_ = out;
+  return out;
+}
+
+/** Populate BRAND with any logos resolved from Drive (data URIs win over blanks). */
+function applyBrandLogos_() {
+  var l = brandLogos_();
+  if (l.logoColor) BRAND.logoColor = l.logoColor;
+  if (l.logoWhite) BRAND.logoWhite = l.logoWhite;
+  if (l.logoMark) BRAND.logoMark = l.logoMark;
+}
+
 // ============================================================================
 // POV — the strategy this audit argues
 // ============================================================================
@@ -354,6 +420,11 @@ function setup() {
      'Slow and patchy for Demand Gen. Turn off first if runs time out.'],
     ['Allow starring in dashboard', true,
      'Turn off for read-only client links.'],
+    ['Logos Drive folder ID', '',
+     'Optional. Drive folder (ID or share URL) holding the Lockhern logos, so ' +
+     'you never upload them. Name one file with "white" (for the blue title/' +
+     'closing slides) and one with "mark" or "monogram" (the LD icon); the rest ' +
+     'is the full-colour logo. Share the folder with this account.'],
     ['Google Ads API version', 'v25', 'Bump when a version sunsets.']
   ];
 
@@ -472,6 +543,7 @@ function doGet(e) {
   template.accounts = JSON.stringify(available).replace(/</g, '\\u003c');
   template.current = JSON.stringify(chosen);
   template.baseUrl = JSON.stringify(webAppUrl_());
+  applyBrandLogos_();
   template.brand = JSON.stringify(BRAND).replace(/</g, '\\u003c');
   template.overrides = JSON.stringify(readOverrides_()).replace(/</g, '\\u003c');
 
@@ -2643,7 +2715,7 @@ function buildDeckPrompt_(data) {
   push('');
   push('Type: ' + BRAND.titleFont + ' for titles and display, ' + BRAND.bodyFont + ' for body and figures. If unavailable, substitute a clean serif for titles and a humanist sans for body. Never a default font.');
   push('');
-  push('Logo: the Lockhern logo on the title and closing slides, white version on the primary blue background, and a small mark in a consistent corner of content slides. Logo files are attached. Embed them, do not redraw the logo.');
+  push('Logo: the Lockhern logo goes on the title and closing slides, white version on the primary blue background, plus a small mark in a consistent corner of content slides. The logos are already in the attached rough deck: the title slide carries the white logo, and the final "Brand assets" slide holds the full-colour, white, and monogram versions. Extract and reuse those image files, then delete the Brand assets slide from your output. Do not redraw the logo. If the deck has no logos, the analyst will attach them or you use the wordmark.');
   push('');
   push("## Design system. This is where the last version fell short. Follow it.");
   push('');
@@ -3618,6 +3690,7 @@ function deckForAccount_(data) {
   var overrides = {};
   try { overrides = readOverrides_(); } catch (e) { overrides = {}; }
   function ovr_(key) { return overrides[key] || ''; }
+  applyBrandLogos_();   // pull logos from the Drive folder if one is configured
   var account = data.account;
   var T = DECK.THEME;
   var W = 720, H = 405, M = 44;
@@ -4299,6 +4372,39 @@ function deckForAccount_(data) {
   // Daily pacing and a standalone methodology-notes slide are intentionally
   // omitted: pacing is rarely the story, and the deck-design prompt folds the
   // two caveats that matter into footnotes on the slides where they apply.
+
+  // --- brand assets (for the designer; removed in the branded rebuild) ------
+  // If logos resolved from Drive, drop them onto a labelled final slide so the
+  // branded rebuild can reuse the real logo files without a separate upload.
+  section('Brand assets', true, function() {
+    if (!(BRAND.logoColor || BRAND.logoWhite || BRAND.logoMark)) return;
+    var slide = deck.appendSlide(SlidesApp.PredefinedLayout.BLANK);
+    header(slide, 'Brand assets (internal, delete in the client deck)');
+    box(slide, 'Lockhern logos for the designer. Reuse these, then remove this ' +
+        'slide before the deck goes to the client.', M, 74, W - M * 2, 16, 10,
+        false, T.muted);
+    var y = 110;
+    [['Full colour', BRAND.logoColor, BRAND.white],
+     ['White (for blue slides)', BRAND.logoWhite, BRAND.tertiary],
+     ['Monogram', BRAND.logoMark, BRAND.white]].forEach(function(row) {
+      if (!row[1]) return;
+      var swatch = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, M, y - 6,
+          210, 54);
+      swatch.getFill().setSolidFill(row[2]);
+      swatch.getBorder().getLineFill().setSolidFill(T.rule);
+      var blob = brandBlob_(row[1]);
+      if (blob) {
+        try {
+          var img = slide.insertImage(blob);
+          var ratio = img.getHeight() / img.getWidth();
+          var w = 150; img.setWidth(w).setHeight(w * ratio)
+              .setLeft(M + 14).setTop(y - 6 + (54 - w * ratio) / 2);
+        } catch (e) {}
+      }
+      box(slide, row[0], M + 230, y + 12, 300, 20, 12, true, T.ink);
+      y += 74;
+    });
+  });
 
   try {
     var scratch = ss && ss.getSheetByName(CHART_SHEET);

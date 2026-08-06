@@ -96,12 +96,19 @@ settings are omitted from the deck rather than shown as a loud "review".
 
 ## Brand assets (logos)
 
-`BRAND.logoColor`, `BRAND.logoWhite`, and `BRAND.logoMark` in `Code.gs` are empty
-data-URI slots. Until they're filled, the dashboard header and deck fall back to a
-brand-coloured wordmark — nothing breaks. To embed the real logo, paste each file
-as a base64 data URI (e.g. `data:image/png;base64,iVBORw0K...`) into the matching
-slot. The dashboard reads them via the `brand` template variable; the deck decodes
-them for the title and closing slides.
+**Recommended: a Drive folder (no uploads).** Put the logo files in a Google
+Drive folder, share it with the account running the tool, and paste the folder's
+ID or share URL into **Settings tab → "Logos Drive folder ID"**. The tool loads
+them (drive.readonly scope) into the dashboard header, onto the rough deck's blue
+title/closing slides, and onto a final **"Brand assets"** slide in the rough deck
+so the branded rebuild reuses the real files with no separate upload. Name one
+file with `white` (for the blue slides) and one with `mark`/`monogram` (the LD
+icon); the rest is treated as the full-colour logo.
+
+**Alternative: inline data URIs.** `BRAND.logoColor`, `BRAND.logoWhite`, and
+`BRAND.logoMark` in `Code.gs` are data-URI slots. Paste each file as a base64
+data URI to hard-code it. Until either path is set, everything falls back to a
+brand-coloured wordmark; nothing breaks.
 
 ## Setup
 
