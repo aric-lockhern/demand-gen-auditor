@@ -582,6 +582,47 @@
     grid-column: 1 / -1; font-size: 11px; color: var(--muted); margin-top: 2px;
   }
 
+  /* --- Settings: verify-in-platform + manual overrides ----------------- */
+  .reviewbox {
+    background: #FFF7EC; border: 1px solid #F2D9A8; border-radius: 12px;
+    padding: 14px 16px; margin: 4px 0 8px;
+  }
+  .reviewbox .rb-title { font-weight: 700; color: #8A5A12; margin-bottom: 4px; }
+  .reviewbox .rb-sub { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+  .pill-review {
+    display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 8px;
+    border-radius: 999px; background: #FBE7C6; color: #8A5A12;
+  }
+  .pill-manual {
+    display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 8px;
+    border-radius: 999px; background: #DEEAFB; color: var(--accent);
+  }
+  .togrow {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 4px 0;
+  }
+  .togrow .tn { font-size: 13px; }
+  .togrow .tc { display: flex; align-items: center; gap: 8px; flex: none; }
+  select.ovr, input.ovrtext {
+    font-family: var(--sans); font-size: 12px; color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 7px; padding: 3px 6px;
+    background: var(--card);
+  }
+  input.ovrtext { min-width: 200px; }
+  select.ovr:focus, input.ovrtext:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(49,122,224,.12);
+  }
+  .revrow {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--rule);
+  }
+  .revrow:last-child { border-bottom: none; }
+  .revrow .rk { font-size: 13px; color: var(--ink-soft); }
+  .ovr-state { font-size: 11px; color: var(--up); margin-left: 6px; opacity: 0;
+    transition: opacity .2s; }
+  .ovr-state.show { opacity: 1; }
+
   @media print {
     nav.tabs, nav.subtabs, .toolbar, .modebar, .star, .story-actions,
     .brandrow { display: none; }
@@ -602,6 +643,10 @@ var ACCOUNTS = <?!= accounts ? accounts : '[]' ?>;
 var CURRENT_ACCOUNT = <?!= current ? current : '""' ?>;
 var BASE_URL = <?!= baseUrl ? baseUrl : '""' ?>;
 var BRAND = <?!= brand ? brand : '{}' ?>;
+// Manual setting overrides, keyed "<campaignId>|<field>" (asset toggles use
+// "<campaignId>|asset|<TYPE>"). Injected fresh each load, edited in the Settings
+// view, saved via google.script.run.saveOverride. Overrides win over the API.
+var OVERRIDES = <?!= overrides ? overrides : '{}' ?>;
 // Per-slide storyboard notes, keyed by slide key. Live-edited in the Storyboard
 // tab and saved back to the Commentary sheet via google.script.run.saveNote.
 var NOTES = (DATA && DATA.notes) || {};
@@ -1271,6 +1316,90 @@ function adCell(row) {
       mix + '</div></div>';
 }
 
+// Campaign settings the Google Ads API does not reliably expose. The auditor
+// verifies them in-platform and records the value here; it saves to the audit
+// and flows into the deck.
+var CAMPAIGN_REVIEW_FIELDS = [
+  ['viewThroughOpt', 'View-through conversion optimization'],
+  ['productFeeds', 'Product feeds'],
+  ['devices', 'Device targeting'],
+  ['gdn', 'Google Display Network'],
+  ['thirdParty', 'Third-party measurement'],
+  ['ipExclusions', 'IP exclusions'],
+  ['urlOptions', 'Campaign URL options'],
+  ['brandGuidelines', 'Brand guidelines']
+];
+
+function ovrGet(key) { return OVERRIDES[key] || ''; }
+
+/** Persist an override and show a tiny saved/failed state. */
+function ovrSet(key, value, stateId) {
+  value = String(value || '');
+  if (value) OVERRIDES[key] = value; else delete OVERRIDES[key];
+  var el = stateId ? document.getElementById(stateId) : null;
+  function show(msg, cls) {
+    if (!el) return;
+    el.textContent = msg; el.style.color = cls; el.className = 'ovr-state show';
+    if (cls === 'var(--up)') setTimeout(function() {
+      el.className = 'ovr-state'; }, 1200);
+  }
+  show('saving…', 'var(--muted)');
+  try {
+    if (window.google && google.script && google.script.run) {
+      google.script.run
+          .withSuccessHandler(function() { show('saved', 'var(--up)'); })
+          .withFailureHandler(function() { show('not saved', 'var(--down)'); })
+          .saveOverride(key, value);
+    } else { show('preview only', 'var(--down)'); }
+  } catch (e) { show('not saved', 'var(--down)'); }
+}
+
+function campaignGoal(c) {
+  return /value|roas/i.test((c.bidding || '') + ' ' + (c.target || ''))
+      ? 'Conversion value' : 'Conversions';
+}
+
+/** A three-state asset-toggle row: detected badge + On/Off/As-detected select. */
+function toggleRow(c, a) {
+  var key = c.id + '|asset|' + a.type;
+  var ov = ovrGet(key);
+  var eff = ov || (a.verified ? (a.on ? 'on' : 'off') : 'review');
+  var badge = ov
+      ? '<span class="pill-manual">' + (ov === 'on' ? 'ON' : 'OFF') +
+        ' · manual</span>'
+      : eff === 'on' ? '<span class="flagpill on">ON</span>'
+      : eff === 'off' ? '<span class="flagpill off">OFF</span>'
+      : '<span class="pill-review">Review</span>';
+  var sid = 'st-' + key;
+  var sel = '<select class="ovr" data-key="' + esc(key) + '" data-state="' +
+      esc(sid) + '">' +
+      '<option value="">' + (a.verified ? 'As detected' : 'Set…') + '</option>' +
+      '<option value="on"' + (ov === 'on' ? ' selected' : '') + '>On</option>' +
+      '<option value="off"' + (ov === 'off' ? ' selected' : '') + '>Off</option>' +
+      '</select><span class="ovr-state" id="' + esc(sid) + '"></span>';
+  return '<div class="togrow"><span class="tn">' + esc(a.name) + '</span>' +
+      '<span class="tc">' + badge + sel + '</span></div>';
+}
+
+function reviewBox(c) {
+  return '<div class="reviewbox"><div class="rb-title">Verify in platform</div>' +
+    '<div class="rb-sub">Google’s API doesn’t expose these. Open the campaign ' +
+    'in Google Ads, record the value here — it saves to the audit and flows ' +
+    'into the deck.</div>' +
+    CAMPAIGN_REVIEW_FIELDS.map(function(f) {
+      var key = c.id + '|' + f[0];
+      var val = ovrGet(key);
+      var sid = 'st-' + key;
+      return '<div class="revrow"><span class="rk">' + esc(f[1]) + '</span>' +
+        '<span>' + (val ? '<span class="pill-manual">set</span> '
+                        : '<span class="pill-review">Review</span> ') +
+        '<input class="ovrtext" type="text" data-key="' + esc(key) +
+        '" data-state="' + esc(sid) + '" value="' + esc(val) +
+        '" placeholder="Set from platform…"><span class="ovr-state" id="' +
+        esc(sid) + '"></span></span></div>';
+    }).join('') + '</div>';
+}
+
 function drawSettings() {
   var settings = DATA.settings;
   var packing = DATA.creativePacking;
@@ -1322,27 +1451,32 @@ function drawSettings() {
           (c.budgetShared ? ' (shared)' : '')) +
       row('Delivery', esc(c.budgetDelivery || '—')) +
       row('New vs existing', esc(c.acquisition), acquisitionFlag) +
-      row('Bids toward', esc((c.goals || []).join(', ') || 'Account default')) +
+      row('Campaign goal', esc(campaignGoal(c))) +
+      row('Conversion goals', esc((c.goals || []).join(', ') ||
+          'Account default')) +
+      (c.spend ? row('Spend (this window)', money(c.spend)) : '') +
       row('Ad schedule', esc(schedule),
           (c.schedule || []).length ? ['on', 'restricted'] : null) +
-      row('Locations', esc((c.locations || []).slice(0, 3).join(', ') ||
-          'All locations') + ((c.locations || []).length > 3
-              ? ' +' + (c.locations.length - 3) : '')) +
-      row('Excluded locations', esc((c.excludedLocations || []).join(', ') || 'None')) +
-      row('Languages', esc((c.languages || []).join(', ') || 'All')) +
+      (c.targetingAtAdGroup
+        ? row('Location & language', '<span style="color:var(--muted)">Set ' +
+            'at ad group — see Ad group settings</span>', ['on', 'ad group'])
+        : row('Locations', esc((c.locations || []).slice(0, 3).join(', ') ||
+              'All locations') + ((c.locations || []).length > 3
+                  ? ' +' + (c.locations.length - 3) : '')) +
+          row('Excluded locations',
+              esc((c.excludedLocations || []).join(', ') || 'None')) +
+          row('Languages', esc((c.languages || []).join(', ') || 'All'))) +
       row('Excluded audiences',
           esc((c.excludedAudiences || []).join(', ') || 'None'),
           (c.excludedAudiences || []).length ? null : ['off', 'none']) +
-      ((c.automation || []).length
-        ? '<div class="setrow" style="display:block"><div class="k" ' +
-          'style="margin-bottom:6px">Asset optimisation</div>' +
-          c.automation.map(function(a) {
-            return '<div style="display:flex;justify-content:space-between;' +
-                'padding:3px 0"><span>' + esc(a.name) + '</span>' +
-                '<span class="flagpill ' + (a.on ? 'on' : 'off') + '">' +
-                (a.on ? 'ON' : 'OFF') + '</span></div>';
-          }).join('') + '</div>'
-        : '') +
+      '<div class="setrow" style="display:block"><div class="k" ' +
+        'style="margin-bottom:6px">Asset optimisation (AI enhancements)</div>' +
+        ((c.automation || []).length
+          ? c.automation.map(function(a) { return toggleRow(c, a); }).join('')
+          : '<div class="rb-sub">No toggles returned by the API — verify ' +
+            'in platform.</div>') +
+      '</div>' +
+      reviewBox(c) +
       '</div>';
   }).join('') + '</div>';
 
@@ -1365,6 +1499,62 @@ function drawSettings() {
       }).join('') + '</tbody></table></div>';
   }
   return out;
+}
+
+/** Wire the override selects/inputs after the settings panel renders. */
+function bindSettings() {
+  var els = document.querySelectorAll(
+      '#panel-settings select.ovr, #panel-settings input.ovrtext');
+  for (var i = 0; i < els.length; i++) {
+    (function(el) {
+      var key = el.getAttribute('data-key');
+      var stateId = el.getAttribute('data-state');
+      el.addEventListener('change', function() {
+        ovrSet(key, el.value, stateId);
+        // Selects re-render so the effective badge updates; text inputs don't,
+        // to preserve what was just typed.
+        if (el.tagName === 'SELECT') render();
+      });
+    })(els[i]);
+  }
+}
+
+/** Ad-group-level settings: location, language and audience targeting. */
+function drawAdGroupSettings() {
+  var rows = DATA.adGroupSettings || [];
+  document.getElementById('count').textContent = rows.length + ' ad groups';
+  if (!rows.length) {
+    return '<div class="scroll"><div class="empty">No ad-group settings ' +
+        'returned. Run refresh to pull them.</div></div>';
+  }
+  function list(arr, empty) {
+    return esc((arr || []).join(', ') || empty);
+  }
+  function r(k, v, muted) {
+    return '<div class="setrow"><span class="k">' + esc(k) + '</span>' +
+        '<span class="v"' + (muted ? ' style="color:var(--muted)"' : '') +
+        '>' + v + '</span></div>';
+  }
+  return '<div class="rb-sub" style="margin:0 0 10px">Demand Gen often targets ' +
+    'at the ad-group level. Audience <em>signals</em> also appear in the ' +
+    'Audiences tab; this view covers location, language and list targeting.' +
+    '</div><div class="setgrid">' + rows.map(function(ag) {
+    return '<div class="setcard"><h3>' + esc(ag.adGroup) + '</h3>' +
+      '<div class="sub">' + esc(ag.status || '') +
+        (ag.type ? ' · ' + esc(ag.type) : '') +
+        (ag.spend ? ' · ' + money(ag.spend) + ' spend' : '') +
+        ' · ' + esc(ag.campaign) + '</div>' +
+      r('Locations', list(ag.locations, 'All locations'),
+          !(ag.locations || []).length) +
+      r('Excluded locations', list(ag.excludedLocations, 'None'),
+          !(ag.excludedLocations || []).length) +
+      r('Languages', list(ag.languages, 'All'), !(ag.languages || []).length) +
+      r('Audience lists', list(ag.audiences, 'None at ad-group level'),
+          !(ag.audiences || []).length) +
+      r('Excluded audiences', list(ag.excludedAudiences, 'None'),
+          !(ag.excludedAudiences || []).length) +
+      '</div>';
+  }).join('') + '</div>';
 }
 
 /** Conversion actions: rolled up first, then the campaign-level detail. */
@@ -1546,8 +1736,10 @@ var VIEWS = {
     rows: function() { return DATA.videos || []; } },
   surfaces: { label: 'Surfaces', custom: true,
     rows: function() { return DATA.surfaceMix || []; } },
-  settings: { label: 'Settings', custom: true,
+  settings: { label: 'Campaign settings', custom: true,
     rows: function() { return ((DATA.settings || {}).campaigns) || []; } },
+  adGroupSettings: { label: 'Ad group settings', custom: true,
+    rows: function() { return DATA.adGroupSettings || []; } },
   conversions: { label: 'Conversions', custom: true,
     rows: function() { return DATA.conversionActions || []; } },
   ads: { label: 'Ads', rows: function() { return DATA.ads; },
@@ -1635,7 +1827,8 @@ var GROUPS = [
   { label: 'Creative', views: ['videos', 'ads', 'assets'] },
   { label: 'Placement', views: ['surfaces', 'placements'] },
   { label: 'Audience', views: ['audiences', 'demographics'] },
-  { label: 'Structure', views: ['campaigns', 'adGroups', 'settings'] },
+  { label: 'Structure',
+    views: ['campaigns', 'adGroups', 'settings', 'adGroupSettings'] },
   { label: 'Outcomes', views: ['conversions', 'daily'] }
 ];
 
@@ -1705,7 +1898,7 @@ function buildToolbar() {
   if (ACTIVE === 'story') { bar.innerHTML = ''; return; }
 
   // Surfaces has no name search; it has a metric selector driving the donuts.
-  if (ACTIVE === 'settings') {
+  if (ACTIVE === 'settings' || ACTIVE === 'adGroupSettings') {
     bar.innerHTML = '<span class="count" id="count"></span>';
     return;
   }
@@ -1931,6 +2124,12 @@ function render() {
 
   if (ACTIVE === 'settings') {
     panel.innerHTML = drawSettings();
+    bindSettings();
+    return;
+  }
+
+  if (ACTIVE === 'adGroupSettings') {
+    panel.innerHTML = drawAdGroupSettings();
     return;
   }
 

@@ -132,33 +132,51 @@ var ASSET_AUTOMATION = {
   FINAL_URL_EXPANSION_TEXT_ASSET_AUTOMATION: 'Final URL expansion text'
 };
 
+// Campaign settings the API does not reliably expose; verified manually in the
+// dashboard and carried into the deck. Keep in sync with the dashboard copy.
+var CAMPAIGN_REVIEW_FIELDS = [
+  ['viewThroughOpt', 'View-through conversion optimization'],
+  ['productFeeds', 'Product feeds'],
+  ['devices', 'Device targeting'],
+  ['gdn', 'Google Display Network'],
+  ['thirdParty', 'Third-party measurement'],
+  ['ipExclusions', 'IP exclusions'],
+  ['urlOptions', 'Campaign URL options'],
+  ['brandGuidelines', 'Brand guidelines']
+];
+
 /**
- * A complete asset-automation panel for a campaign. Google returns a status for
- * every toggle it has a record of; a toggle the advertiser never touched is
- * simply opted out, which is how the Ads UI shows it (Off). So we start from the
- * full known set as Off and overlay whatever the API reports — the panel is
- * always complete, and any toggle type we don't have a friendly name for is
- * still shown via pretty_. `known` is false only for the base rows the API said
- * nothing about, so a renderer can distinguish "reported Off" from "assumed
- * Off" if it wants to.
+ * The asset-automation panel for a campaign, reported honestly.
+ *
+ * We show the full list of toggles the Ads UI exposes so the auditor has a
+ * complete checklist, but we NEVER invent a state: a toggle is ON/OFF only when
+ * the API actually reports it (`verified: true`). Anything the API does not
+ * return is left as `on: null` — "review in platform" — rather than assumed Off,
+ * because assuming Off is exactly how we mislabelled an enabled setting before.
+ * The dashboard lets the auditor set the true value manually where the API is
+ * silent.
  */
 function mergeAutomation_(raw) {
-  var order = Object.keys(ASSET_AUTOMATION);
-  var byType = {};
-  order.forEach(function(type) {
-    byType[type] = { name: ASSET_AUTOMATION[type], on: false, known: false };
-  });
+  var reported = {};
   (raw || []).forEach(function(item) {
-    var type = item.assetAutomationType;
-    if (!type) return;
-    if (!byType[type]) order.push(type);
-    byType[type] = {
+    if (item && item.assetAutomationType) {
+      reported[item.assetAutomationType] =
+          item.assetAutomationStatus === 'OPTED_IN';
+    }
+  });
+  var order = Object.keys(ASSET_AUTOMATION);
+  Object.keys(reported).forEach(function(type) {
+    if (order.indexOf(type) === -1) order.push(type);
+  });
+  return order.map(function(type) {
+    var has = reported.hasOwnProperty(type);
+    return {
+      type: type,
       name: ASSET_AUTOMATION[type] || pretty_(type),
-      on: item.assetAutomationStatus === 'OPTED_IN',
-      known: true
+      on: has ? reported[type] : null,   // null = the API said nothing; review
+      verified: has
     };
   });
-  return order.map(function(type) { return byType[type]; });
 }
 
 var ACQUISITION_MODES = {
@@ -289,6 +307,7 @@ var SETTINGS_SHEET = 'Settings';
 var CURRENT = null;
 var PAYLOAD_CHUNK = 45000;  // Sheets caps a cell at 50,000 characters.
 var LABELS_SHEET = '_labels';
+var OVERRIDES_SHEET = '_overrides';
 
 // ===========================================================================
 // ENTRY POINTS
@@ -447,6 +466,7 @@ function doGet(e) {
   template.current = JSON.stringify(chosen);
   template.baseUrl = JSON.stringify(webAppUrl_());
   template.brand = JSON.stringify(BRAND).replace(/</g, '\\u003c');
+  template.overrides = JSON.stringify(readOverrides_()).replace(/</g, '\\u003c');
 
   return template.evaluate()
       .setTitle('Demand Gen Audit')
@@ -541,6 +561,7 @@ function auditAccount_(customerId) {
     devices: pullDevices_(range.current),
     surfaces: pullSurfaces_(range.current),
     settings: pullSettings_(),
+    adGroupSettings: pullAdGroupSettings_(),
     placements: CONFIG.SKIP_PLACEMENTS ? [] : pullPlacements_(range.current),
     daily: pullDaily_(range.current)
   };
@@ -1242,7 +1263,9 @@ function pullSettings_() {
     });
 
   out.campaigns.forEach(function(c) {
-    if (!c.acquisition) c.acquisition = 'Not configured';
+    // No lifecycle goal on the campaign is not "unconfigured" — it is the
+    // default, which the Ads UI shows as bidding equally for new and existing.
+    if (!c.acquisition) c.acquisition = ACQUISITION_MODES.TARGET_ALL_EQUALLY;
   });
 
   // --- conversion action detail -------------------------------------------
@@ -1270,6 +1293,141 @@ function pullSettings_() {
     });
 
   return out;
+}
+
+/** Resolve geo_target_constant IDs to canonical place names. */
+function resolveGeo_(ids) {
+  var names = {};
+  chunk_(dedupe_(ids), 200).forEach(function(batch) {
+    if (!batch.length) return;
+    gaql_('Resolve locations', 'geo_target_constant',
+        ['geo_target_constant.id', 'geo_target_constant.canonical_name'], [],
+        'geo_target_constant.id IN (' + batch.join(',') + ')')
+      .forEach(function(r) {
+        names[String(get_(r, 'geoTargetConstant.id'))] =
+            get_(r, 'geoTargetConstant.canonicalName');
+      });
+  });
+  return names;
+}
+
+/** Resolve language_constant IDs to readable names (1000 -> English). */
+function resolveLang_(ids) {
+  var names = {};
+  chunk_(dedupe_(ids), 200).forEach(function(batch) {
+    if (!batch.length) return;
+    gaql_('Resolve languages', 'language_constant',
+        ['language_constant.id', 'language_constant.name',
+         'language_constant.code'], [],
+        'language_constant.id IN (' + batch.join(',') + ')')
+      .forEach(function(r) {
+        names[String(get_(r, 'languageConstant.id'))] =
+            get_(r, 'languageConstant.name') || get_(r, 'languageConstant.code');
+      });
+  });
+  return names;
+}
+
+/** Resolve user_list IDs to names. */
+function resolveUserLists_(ids) {
+  var names = {};
+  chunk_(dedupe_(ids), 200).forEach(function(batch) {
+    if (!batch.length) return;
+    gaql_('Resolve user lists', 'user_list',
+        ['user_list.id', 'user_list.name'], [],
+        'user_list.id IN (' + batch.join(',') + ')')
+      .forEach(function(r) {
+        names[String(get_(r, 'userList.id'))] = get_(r, 'userList.name');
+      });
+  });
+  return names;
+}
+
+/**
+ * Ad-group-level settings. For Demand Gen, location, language and audience
+ * targeting are frequently set at the ad group rather than the campaign — which
+ * is why a campaign can read "All locations" while the real targeting lives
+ * here. Pulls each ad group's targeted/excluded locations, languages and
+ * remarketing lists, resolved to names.
+ */
+function pullAdGroupSettings_() {
+  var meta = {};
+  gaql_('Ad group settings', 'ad_group',
+      ['campaign.id', 'campaign.name', 'ad_group.id', 'ad_group.name',
+       'ad_group.status'],
+      [['ad_group.type']], DGEN)
+    .forEach(function(r) {
+      var id = get_(r, 'adGroup.id');
+      meta[id] = {
+        campaignId: get_(r, 'campaign.id'),
+        campaign: get_(r, 'campaign.name'),
+        id: id,
+        adGroup: get_(r, 'adGroup.name'),
+        status: get_(r, 'adGroup.status'),
+        type: pretty_(get_(r, 'adGroup.type')) || '',
+        locations: [], excludedLocations: [], languages: [],
+        audiences: [], excludedAudiences: []
+      };
+    });
+  if (!Object.keys(meta).length) return [];
+
+  var geoIds = [], langIds = [], listIds = [];
+  gaql_('Ad group criteria', 'ad_group_criterion',
+      ['ad_group.id', 'ad_group_criterion.type',
+       'ad_group_criterion.negative'],
+      [['ad_group_criterion.location.geo_target_constant'],
+       ['ad_group_criterion.language.language_constant'],
+       ['ad_group_criterion.user_list.user_list']],
+      DGEN + " AND ad_group_criterion.type IN ('LOCATION', 'LANGUAGE', " +
+      "'USER_LIST')")
+    .forEach(function(r) {
+      var ag = meta[get_(r, 'adGroup.id')];
+      if (!ag) return;
+      var type = get_(r, 'adGroupCriterion.type');
+      var neg = !!get_(r, 'adGroupCriterion.negative');
+      if (type === 'LOCATION') {
+        var ref = get_(r, 'adGroupCriterion.location.geoTargetConstant');
+        if (ref) {
+          var gid = String(ref).split('/').pop();
+          geoIds.push(gid);
+          (neg ? ag.excludedLocations : ag.locations).push(gid);
+        }
+      } else if (type === 'LANGUAGE') {
+        var lref = get_(r, 'adGroupCriterion.language.languageConstant');
+        if (lref) {
+          var lid = String(lref).split('/').pop();
+          langIds.push(lid);
+          ag.languages.push(lid);
+        }
+      } else if (type === 'USER_LIST') {
+        var uref = get_(r, 'adGroupCriterion.userList.userList');
+        if (uref) {
+          var uid = String(uref).split('/').pop();
+          listIds.push(uid);
+          (neg ? ag.excludedAudiences : ag.audiences).push(uid);
+        }
+      }
+    });
+
+  var geoNames = resolveGeo_(geoIds);
+  var langNames = resolveLang_(langIds);
+  var listNames = resolveUserLists_(listIds);
+
+  return Object.keys(meta).map(function(id) {
+    var ag = meta[id];
+    ag.locations = ag.locations.map(function(x) { return geoNames[x] || x; });
+    ag.excludedLocations = ag.excludedLocations.map(function(x) {
+      return geoNames[x] || x;
+    });
+    ag.languages = ag.languages.map(function(x) { return langNames[x] || x; });
+    ag.audiences = ag.audiences.map(function(x) {
+      return listNames[x] || ('List ' + x);
+    });
+    ag.excludedAudiences = ag.excludedAudiences.map(function(x) {
+      return listNames[x] || ('List ' + x);
+    });
+    return ag;
+  });
 }
 
 function pullDemographics_(dateClause) {
@@ -2448,8 +2606,13 @@ function buildDeckPrompt_(data) {
   push('   existing customers, ad schedule, locations targeted AND excluded,');
   push('   languages, audience exclusions, and the AI asset-enhancement toggles');
   push('   (Shorter/Resized/Enhanced videos, image enhancements, etc.) each shown');
-  push('   ON or OFF. This is where misconfiguration hides — make it legible, and');
-  push('   flag anything that narrows delivery or starves the algorithm of signal.');
+  push('   ON, OFF, or "review in platform" where the API could not confirm it.');
+  push('   Note that Demand Gen often targets at the AD GROUP level — where a');
+  push('   campaign reads "Set at ad group", show the ad-group targeting. Include');
+  push('   the analyst-verified settings (view-through optimisation, product');
+  push('   feeds, GDN, devices, etc.). This is where misconfiguration hides —');
+  push('   make it legible, and flag anything that narrows delivery or starves');
+  push('   the algorithm of signal.');
   push('10. **Structure** — campaigns, ad groups, audiences, demographics, assets.');
   push('11. **Spend over time.**');
   push('12. **How to read these numbers** — the caveats, kept in full.');
@@ -2684,6 +2847,62 @@ function saveNote(key, text) {
     sheet.appendRow([key, value]);
   }
   return 'ok';
+}
+
+/**
+ * Manual setting overrides, keyed by "<campaignId>|<field>" (asset toggles use
+ * "<campaignId>|asset|<TYPE>"). This is how the auditor records the truth for
+ * settings the API cannot confirm — view-through optimisation, product feeds,
+ * device targeting, and any toggle Google does not report. Overrides win over
+ * the API value everywhere: dashboard, deck and brief. Stored one row per key
+ * in a hidden sheet, and injected fresh in doGet so a reload always shows the
+ * latest without a full refresh (same pattern as labels).
+ */
+function saveOverride(key, value) {
+  key = String(key || '').trim();
+  if (!key) return 'no-key';
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) return 'no-spreadsheet';
+
+  var sheet = ss.getSheetByName(OVERRIDES_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(OVERRIDES_SHEET);
+    sheet.getRange(1, 1, 1, 2).setValues([['Key', 'Value']])
+        .setFontWeight('bold');
+    sheet.setFrozenRows(1);
+    try { sheet.hideSheet(); } catch (e) {}
+  }
+
+  var value = String(value == null ? '' : value).substring(0, 500);
+  var lastRow = sheet.getLastRow();
+  var found = 0;
+  if (lastRow > 1) {
+    var keys = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (var i = 0; i < keys.length; i++) {
+      if (String(keys[i][0]) === key) { found = i + 2; break; }
+    }
+  }
+  // Empty value clears the override so the API value shows again.
+  if (!value) {
+    if (found) sheet.getRange(found, 1, 1, 2).clearContent();
+    return 'ok';
+  }
+  if (found) sheet.getRange(found, 2).setValue(value);
+  else sheet.appendRow([key, value]);
+  return 'ok';
+}
+
+function readOverrides_() {
+  var out = {};
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss && ss.getSheetByName(OVERRIDES_SHEET);
+  if (!sheet || sheet.getLastRow() < 2) return out;
+  sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues()
+      .forEach(function(row) {
+        var key = String(row[0]).trim();
+        if (key) out[key] = String(row[1] == null ? '' : row[1]);
+      });
+  return out;
 }
 
 function buildBrief_(data) {
@@ -2981,6 +3200,52 @@ function buildBrief_(data) {
       settings.campaigns.map(function(c) {
         return [c.name, (c.goals || []).join(', ') || 'Account default'];
       }));
+
+    // Manually verified settings the API cannot confirm (analyst overrides).
+    var ovr = {};
+    try { ovr = readOverrides_(); } catch (e) { ovr = {}; }
+    var reviewRows = [];
+    settings.campaigns.forEach(function(c) {
+      CAMPAIGN_REVIEW_FIELDS.forEach(function(f) {
+        var v = ovr[c.id + '|' + f[0]];
+        if (v) reviewRows.push([c.name, f[1], v]);
+      });
+      (c.automation || []).forEach(function(a) {
+        var o = ovr[c.id + '|asset|' + a.type];
+        if (o) reviewRows.push([c.name, a.name + ' (asset optimisation)',
+            o.toUpperCase()]);
+      });
+    });
+    push('### Manually verified settings (analyst-recorded; API could not confirm)');
+    push('');
+    if (reviewRows.length) {
+      table(['Campaign', 'Setting', 'Value'], reviewRows);
+    } else {
+      push('Several campaign settings are not exposed by the Google Ads API — ' +
+           'view-through conversion optimization, product feeds, device ' +
+           'targeting, Google Display Network, third-party measurement, IP ' +
+           'exclusions, URL options and brand guidelines. None were manually ' +
+           'verified for this run, so treat them as unknown, not default.');
+      push('');
+    }
+  }
+
+  if ((data.adGroupSettings || []).length) {
+    push('## Ad group settings');
+    push('');
+    push('Demand Gen frequently sets location, language and audience targeting ' +
+         'at the ad group, so campaign-level targeting can read "All" while the ' +
+         'real targeting lives here.');
+    push('');
+    table(['Ad group', 'Campaign', 'Status', 'Locations', 'Languages',
+           'Audience lists', 'Excluded audiences'],
+      data.adGroupSettings.map(function(ag) {
+        return [ag.adGroup, ag.campaign, ag.status || '',
+                (ag.locations || []).join('; ') || 'All',
+                (ag.languages || []).join('; ') || 'All',
+                (ag.audiences || []).join('; ') || 'None',
+                (ag.excludedAudiences || []).join('; ') || 'None'];
+      }));
   }
 
   if ((settings || {}).conversionActions && settings.conversionActions.length) {
@@ -3083,7 +3348,7 @@ var DECK = {
     // creative = the single one-page scorecard. creativeDetail = the optional
     // per-video appendix (one slide each), off by default so the client deck
     // stays tight. Flip it on for an internal deep-dive.
-    creative: true, creativeDetail: false
+    creative: true, creativeDetail: false, adGroupSettings: true
   },
   THEME: {
     ink: BRAND.ink,
@@ -3228,6 +3493,9 @@ function setupCommentary() {
 
 function deckForAccount_(data) {
   var notes = readCommentary_();
+  var overrides = {};
+  try { overrides = readOverrides_(); } catch (e) { overrides = {}; }
+  function ovr_(key) { return overrides[key] || ''; }
   var account = data.account;
   var T = DECK.THEME;
   var W = 720, H = 405, M = 44;
@@ -3700,44 +3968,57 @@ function deckForAccount_(data) {
     var reserved = commentary(slide, 'settings');
     var contentH = H - 100 - reserved - 12;
 
+    var goal = /value|roas/i.test((c.bidding || '') + ' ' + (c.target || ''))
+        ? 'Conversion value' : 'Conversions';
+    var locationLine = c.targetingAtAdGroup
+        ? 'Location & language:  Set at ad group (see Ad group settings)'
+        : 'Locations:  ' + (settingsList(c.locations, 4) || 'All locations') +
+          '\n\nExcluded locations:  ' +
+              (settingsList(c.excludedLocations, 4) || 'None') +
+          '\n\nLanguages:  ' + ((c.languages || []).join(', ') || 'All');
+
     var left = [
       'Status:  ' + (c.status || '—') +
           (c.startDate ? '   ·   since ' + c.startDate : '') +
           (c.endDate ? '   ·   ends ' + c.endDate : ''),
+      'Campaign goal:  ' + goal,
       'Bidding:  ' + (c.bidding || '—') + (c.target ? '   ·   ' + c.target : ''),
       'Daily budget:  ' + fmtMoney(c.budget) +
           (c.budgetShared ? '  (shared)' : '') +
           (c.budgetDelivery ? '   ·   ' + c.budgetDelivery + ' delivery' : ''),
-      'Bids toward:  ' + ((c.goals || []).join(', ') || 'Account default goals'),
+      'Conversion goals:  ' + ((c.goals || []).join(', ') || 'Account default'),
       'New vs existing:  ' + (c.acquisition || '—'),
       'Ad schedule:  ' + ((c.schedule || []).length
           ? c.schedule.length + ' window(s)' : 'All day, every day'),
-      'Locations:  ' + (settingsList(c.locations, 4) || 'All locations'),
-      'Excluded locations:  ' + (settingsList(c.excludedLocations, 4) || 'None'),
-      'Languages:  ' + ((c.languages || []).join(', ') || 'All'),
+      locationLine,
       'Excluded audiences:  ' + (settingsList(c.excludedAudiences, 4) || 'None')
     ].join('\n\n');
 
     box(slide, 'TARGETING & BIDDING', M, 82, 316, 14, 10, true, T.accent);
-    box(slide, left, M, 100, 316, contentH, 10.5, false, T.ink);
+    box(slide, left, M, 100, 316, contentH, 9.5, false, T.ink);
 
+    // AI enhancements — override wins, then the API's verified state, else review.
     var automation = c.automation || [];
-    var anyAssumed = false;
-    var right = automation.length
+    var toggles = automation.length
         ? automation.map(function(a) {
-            if (a.known === false) anyAssumed = true;
-            return (a.on ? '●  ' : '○  ') + a.name + '  —  ' +
-                (a.on ? 'ON' : 'OFF') + (a.known === false ? ' *' : '');
-          }).join('\n\n')
-        : 'Not reported by the API for this campaign.';
+            var o = ovr_(c.id + '|asset|' + a.type);
+            if (o) return '●  ' + a.name + '  —  ' +
+                (o === 'on' ? 'ON' : 'OFF') + ' (manual)';
+            if (a.verified) return (a.on ? '●  ' : '○  ') + a.name + '  —  ' +
+                (a.on ? 'ON' : 'OFF');
+            return '⚠  ' + a.name + '  —  review in platform';
+          }).join('\n')
+        : '(no toggles reported — review in platform)';
+
+    var reviewLines = CAMPAIGN_REVIEW_FIELDS.map(function(f) {
+      var v = ovr_(c.id + '|' + f[0]);
+      return (v ? '●  ' : '⚠  ') + f[1] + '  —  ' + (v || 'review in Google Ads');
+    }).join('\n');
 
     box(slide, 'AI ASSET ENHANCEMENTS', M + 336, 82, 296, 14, 10, true, T.accent);
-    box(slide, right, M + 336, 100, 296, contentH, 10.5, false, T.ink);
-    if (anyAssumed) {
-      box(slide, '*  the API returned no status for this toggle; shown as Off, ' +
-          'as the Ads UI displays an un-set enhancement.',
-          M + 336, H - 30, 296, 22, 7.5, false, T.muted);
-    }
+    box(slide, toggles, M + 336, 100, 296, 150, 9, false, T.ink);
+    box(slide, 'VERIFY IN PLATFORM', M + 336, 258, 296, 14, 10, true, T.accent);
+    box(slide, reviewLines, M + 336, 276, 296, contentH - 194, 9, false, T.ink);
     return slide;
   }
 
@@ -3764,6 +4045,23 @@ function deckForAccount_(data) {
                 a.viewThroughDays ? a.viewThroughDays + 'd' : 'none',
                 a.clickThroughDays ? a.clickThroughDays + 'd' : '—',
                 a.counting || '—'];
+      }));
+  });
+
+  // --- ad group settings ---------------------------------------------------
+  // Demand Gen frequently targets at the ad group, so campaign-level targeting
+  // can read "All" while the real geo/language/audience lives here.
+  section('Ad group settings', false, function() {
+    var ags = data.adGroupSettings || [];
+    if (!ags.length) return;
+    tableSlide('adGroupSettings', 'Ad group settings — targeting',
+      ['Ad group', 'Campaign', 'Status', 'Locations', 'Languages', 'Lists'],
+      ags.map(function(ag) {
+        return [String(ag.adGroup || '').slice(0, 22),
+                String(ag.campaign || '').slice(0, 18), ag.status || '—',
+                (ag.locations || []).slice(0, 2).join('; ') || 'All',
+                (ag.languages || []).join(', ') || 'All',
+                String((ag.audiences || []).length)];
       }));
   });
 
@@ -4020,6 +4318,51 @@ function videoSlide_(deck, v, data, notes, ui) {
  * dashboard picker can label accounts without parsing the whole blob.
  */
 function savePayload_(data) {
+  // Order settings by enabled campaigns first, then by spend — so the deck and
+  // dashboard lead with the campaigns that matter. Spend comes from the
+  // campaigns pull, joined by id.
+  if (data.settings && (data.settings.campaigns || []).length) {
+    var spendById = {};
+    (data.campaigns || []).forEach(function(c) {
+      spendById[String(c.id)] = c.cost || 0;
+    });
+    data.settings.campaigns.forEach(function(c) {
+      c.spend = spendById[String(c.id)] || 0;
+    });
+    data.settings.campaigns.sort(function(a, b) {
+      var ae = a.status === 'ENABLED' ? 0 : 1;
+      var be = b.status === 'ENABLED' ? 0 : 1;
+      if (ae !== be) return ae - be;
+      return (b.spend || 0) - (a.spend || 0);
+    });
+
+    // Flag campaigns whose location targeting actually lives at the ad group,
+    // so the UI can say "Set at ad group" instead of a misleading "All".
+    var agByCampaign = {};
+    (data.adGroupSettings || []).forEach(function(ag) {
+      (agByCampaign[ag.campaignId] = agByCampaign[ag.campaignId] || []).push(ag);
+    });
+    data.settings.campaigns.forEach(function(c) {
+      var ags = agByCampaign[String(c.id)] || [];
+      c.targetingAtAdGroup = !(c.locations || []).length && ags.some(function(a) {
+        return (a.locations || []).length || (a.languages || []).length;
+      });
+    });
+  }
+
+  // Ad-group settings, sorted enabled-first then by spend (joined from adGroups).
+  var agSpend = {};
+  (data.adGroups || []).forEach(function(g) { agSpend[String(g.id)] = g.cost || 0; });
+  (data.adGroupSettings || []).forEach(function(ag) {
+    ag.spend = agSpend[String(ag.id)] || 0;
+  });
+  (data.adGroupSettings || []).sort(function(a, b) {
+    var ae = a.status === 'ENABLED' ? 0 : 1;
+    var be = b.status === 'ENABLED' ? 0 : 1;
+    if (ae !== be) return ae - be;
+    return (b.spend || 0) - (a.spend || 0);
+  });
+
   var payload = {
     account: data.account,
     totals: data.totals,
@@ -4049,6 +4392,7 @@ function savePayload_(data) {
     placementsSkipped: !!CONFIG.SKIP_PLACEMENTS,
     counts: data.counts || {},
     settings: data.settings || null,
+    adGroupSettings: data.adGroupSettings || [],
     creativePacking: data.creativePacking || null,
     readout: data.readout || null,
     deckPrompt: buildDeckPrompt_(data),

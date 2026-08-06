@@ -48,6 +48,26 @@ That POV and the Lockhern brand are woven through the tool:
   rows. Per-video detail is an opt-in appendix — set
   `DECK.SECTIONS.creativeDetail = true`.
 
+### Settings: honest pulls + manual overrides
+
+The API does not expose every Demand Gen setting, and some (location, language,
+audiences) are set at the **ad group**, not the campaign. So the Settings view:
+
+- Pulls what the API reliably gives (bidding + target, budget, conversion goals,
+  new-vs-existing, schedule, campaign-level locations/languages/exclusions).
+- Never fabricates asset-optimization states — a toggle is ON/OFF only when the
+  API reports it; otherwise it reads **Review** and you set it inline.
+- Lists the settings the API can't confirm (view-through optimization, product
+  feeds, GDN, devices, third-party measurement, IP exclusions, URL options,
+  brand guidelines) under **Verify in platform**, each with a field to record
+  the true value.
+- Adds an **Ad group settings** view (Structure → Ad group settings) with each
+  ad group's location, language and list targeting.
+
+All manual entries (`saveOverride`) persist to a hidden `_overrides` sheet and
+flow into both the deck and the analysis brief. Campaigns sort enabled-first,
+then by spend.
+
 ### The deck flow
 
 1. **Build slide deck** (header button) → a rough, on-brand Google Slides deck
