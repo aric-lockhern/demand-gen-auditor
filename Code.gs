@@ -2692,6 +2692,14 @@ function buildDeckPrompt_(data) {
   }
   push('## Authoritative data. Use these exact numbers.');
   push('');
+  push('The analyst may also attach the full data spreadsheet (.xlsx) exported');
+  push('from this audit. If present, treat it as the complete, authoritative');
+  push('dataset: use it to verify any figure here and to reach detail this');
+  push('summary trims, for example the full audience or conversion-action list,');
+  push('every ad group, or the full daily series. Never paste raw spreadsheet');
+  push('rows onto a slide. Pull only the specific number or short ranking a slide');
+  push('needs, and keep the deck visual.');
+  push('');
   push('Totals this window:');
   push('- Spend ' + money0(t.cost) + ' (' + dlt('cost') + ' vs prior).');
   push('- Conversions ' + (Number(t.conversions) || 0).toFixed(0) + ' (' + dlt('conversions') + '), cost per conversion ' + money0(t.cpa) + '.');

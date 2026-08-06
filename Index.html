@@ -2099,7 +2099,12 @@ function drawStoryboard() {
       '<button class="briefbtn" id="storyPromptBtn">Copy deck design prompt' +
         '</button>' +
       '<button class="briefbtn" id="storyDeckBtn">Build slide deck</button>' +
-    '</div></div>';
+    '</div>' +
+    '<p style="margin:12px 0 0;color:var(--faint);font-size:13px">When you ' +
+    'build: paste the prompt to Claude with the exported deck, and attach your ' +
+    'settings and ad-group audience screenshots plus the full data sheet ' +
+    '(File → Download → .xlsx) as the authoritative source.</p>' +
+    '</div>';
 
   if (!slides.length) {
     return intro + '<p class="meta">No storyboard yet — run refresh in the ' +
