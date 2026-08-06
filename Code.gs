@@ -228,6 +228,8 @@ function brandHex_(key) { return String(BRAND[key] || '').replace('#', ''); }
 // Resolved logo data URIs, cached per execution so a page load or deck build
 // reads Drive at most once.
 var LOGO_CACHE_ = null;
+// The Lockhern 2023 Logos folder, used when no folder is set in Settings.
+var DEFAULT_LOGO_FOLDER = '1e6rabWlRMY_8Zv0k8exYe_XSlttL9t-z';
 
 /** Extract a Drive file/folder ID from a bare ID or a share URL. */
 function driveId_(s) {
@@ -259,7 +261,10 @@ function dataUri_(file) {
 function brandLogos_() {
   if (LOGO_CACHE_) return LOGO_CACHE_;
   var out = { logoColor: '', logoWhite: '', logoMark: '' };
-  var folderId = driveId_(readSetting_('logos drive folder id', ''));
+  // Fall back to the code default so logos resolve even before the Settings row
+  // is added. The Settings value, when present, still wins.
+  var folderId = driveId_(readSetting_('logos drive folder id', '') ||
+      DEFAULT_LOGO_FOLDER);
   if (folderId) {
     try {
       var files = DriveApp.getFolderById(folderId).getFiles();
@@ -3662,20 +3667,41 @@ function buildBundle(deckUrls, screenshots) {
   try {
     var token = ScriptApp.getOAuthToken();
     var files = [];
+    var included = [];
+    var warnings = [];
+    function add(blob) { files.push(blob); included.push(blob.getName()); }
 
+    // Rough deck to .pptx. Try the Slides export path, then a fallback, and
+    // report the failure rather than silently dropping it.
     (deckUrls || []).forEach(function(u, i) {
       var m = String(u).match(/\/d\/([a-zA-Z0-9_-]+)/);
-      if (!m) return;
-      var resp = UrlFetchApp.fetch('https://docs.google.com/presentation/d/' +
-          m[1] + '/export/pptx', {
-        headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true
-      });
-      if (resp.getResponseCode() === 200) {
-        files.push(resp.getBlob().setName(
-            (deckUrls.length > 1 ? 'rough-deck-' + (i + 1) : 'rough-deck') +
-            '.pptx'));
+      if (!m) { warnings.push('Could not read a deck URL.'); return; }
+      var name = (deckUrls.length > 1 ? 'rough-deck-' + (i + 1) : 'rough-deck') +
+          '.pptx';
+      var urls = ['https://docs.google.com/presentation/d/' + m[1] + '/export/pptx',
+                  'https://docs.google.com/presentation/d/' + m[1] +
+                      '/export?format=pptx'];
+      var done = false, code = 0;
+      for (var k = 0; k < urls.length && !done; k++) {
+        var resp = UrlFetchApp.fetch(urls[k], {
+          headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true
+        });
+        code = resp.getResponseCode();
+        var ct = String(resp.getHeaders()['Content-Type'] ||
+            resp.getBlob().getContentType() || '');
+        if (code === 200 && ct.indexOf('html') === -1) {
+          add(resp.getBlob().setName(name));
+          done = true;
+        }
+      }
+      if (!done) {
+        warnings.push('Deck .pptx export failed (HTTP ' + code + '). Re-run ' +
+            'installTrigger to grant Slides/Drive access, then rebuild.');
       }
     });
+    if (!(deckUrls || []).length) {
+      warnings.push('No rough deck was built yet. Do step 1 first.');
+    }
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     if (ss) {
@@ -3683,31 +3709,37 @@ function buildBundle(deckUrls, screenshots) {
           ss.getId() + '/export?format=xlsx', {
         headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true
       });
-      if (xr.getResponseCode() === 200) {
-        files.push(xr.getBlob().setName('audit-data.xlsx'));
-      }
+      if (xr.getResponseCode() === 200) add(xr.getBlob().setName('audit-data.xlsx'));
+      else warnings.push('Data .xlsx export failed (HTTP ' +
+          xr.getResponseCode() + ').');
     }
 
     var logos = brandLogos_();
+    var logoCount = 0;
     [['logo-color', logos.logoColor], ['logo-white', logos.logoWhite],
      ['logo-mark', logos.logoMark]].forEach(function(p) {
       var b = p[1] && dataUriToBlob_(p[1], p[0]);
-      if (b) files.push(b);
+      if (b) { add(b); logoCount++; }
     });
+    if (!logoCount) {
+      warnings.push('No logos found. Check the Logos Drive folder is shared ' +
+          'with this account and re-authorize Drive access.');
+    }
 
     (screenshots || []).forEach(function(sc, i) {
       var uri = String(sc.b64 || '');
       if (uri.indexOf('data:') !== 0) uri = 'data:image/png;base64,' + uri;
       var b = dataUriToBlob_(uri, sc.name || ('screenshot-' + (i + 1)));
-      if (b) files.push(b);
+      if (b) add(b);
     });
 
-    files.push(Utilities.newBlob(getDeckPrompt(), 'text/markdown', 'PROMPT.md'));
-    files.push(Utilities.newBlob(bundleReadme_(), 'text/plain', 'README.txt'));
+    add(Utilities.newBlob(getDeckPrompt(), 'text/markdown', 'PROMPT.md'));
+    add(Utilities.newBlob(bundleReadme_(), 'text/plain', 'README.txt'));
 
     var zip = Utilities.zip(files, 'Demand Gen audit bundle.zip');
     return { ok: true, name: 'Demand Gen audit bundle.zip',
-             b64: Utilities.base64Encode(zip.getBytes()), count: files.length };
+             b64: Utilities.base64Encode(zip.getBytes()),
+             count: files.length, included: included, warnings: warnings };
   } catch (e) {
     return { ok: false, error: String(e.message || e).slice(0, 200) };
   }
