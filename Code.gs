@@ -275,6 +275,14 @@ function brandLogos_() {
       out.logoColor = dataUri_(pick.color);
       out.logoWhite = dataUri_(pick.white);
       out.logoMark = dataUri_(pick.mark);
+      // Fallbacks so a folder with only a couple of files still fills the slots
+      // the tool actually uses. A file named "monogram" that is really the full
+      // colour logo lands in the mark slot, so let colour borrow from it (and
+      // vice versa). Never fall the white slot back to a colour logo: it sits on
+      // a blue background, so an empty white slot must stay empty and let the
+      // white wordmark render instead.
+      if (!out.logoColor) out.logoColor = out.logoMark;
+      if (!out.logoMark) out.logoMark = out.logoColor;
     } catch (e) {
       // Folder unreadable or not shared. Fall back to the wordmark silently.
     }
@@ -420,11 +428,11 @@ function setup() {
      'Slow and patchy for Demand Gen. Turn off first if runs time out.'],
     ['Allow starring in dashboard', true,
      'Turn off for read-only client links.'],
-    ['Logos Drive folder ID', '',
-     'Optional. Drive folder (ID or share URL) holding the Lockhern logos, so ' +
-     'you never upload them. Name one file with "white" (for the blue title/' +
-     'closing slides) and one with "mark" or "monogram" (the LD icon); the rest ' +
-     'is the full-colour logo. Share the folder with this account.'],
+    ['Logos Drive folder ID', '1e6rabWlRMY_8Zv0k8exYe_XSlttL9t-z',
+     'Drive folder (ID or share URL) holding the Lockhern logos, so you never ' +
+     'upload them. Defaults to the Lockhern 2023 Logos folder. Name one file ' +
+     'with "white" (for the blue title/closing slides); the rest is the ' +
+     'full-colour logo. The folder must be owned by or shared with this account.'],
     ['Google Ads API version', 'v25', 'Bump when a version sunsets.']
   ];
 
