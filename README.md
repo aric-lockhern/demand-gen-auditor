@@ -68,6 +68,14 @@ All manual entries (`saveOverride`) persist to a hidden `_overrides` sheet and
 flow into both the deck and the analysis brief. Campaigns sort enabled-first,
 then by spend.
 
+**Ground truth (paste or screenshot).** The Settings view has a "Ground truth"
+box: paste the campaign and ad-group settings copied from Google Ads, and it
+saves as the authoritative source. Even simpler, when you build the deck you can
+drag the settings screenshots straight into the Claude chat, the deck prompt
+tells Claude to treat any attached settings screenshots or pasted text as truth
+and correct anything the API read wrong (e.g. conversion goals). Unconfirmed
+settings are omitted from the deck rather than shown as a loud "review".
+
 ### The deck flow
 
 1. **Build slide deck** (header button) → a rough, on-brand Google Slides deck

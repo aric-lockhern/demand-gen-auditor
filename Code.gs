@@ -1242,7 +1242,11 @@ function pullSettings_() {
     .forEach(function(r) {
       var campaign = byId[get_(r, 'campaign.id')];
       if (!campaign) return;
-      if (!get_(r, 'campaignConversionGoal.biddable')) return;
+      // Only skip goals the API explicitly marks non-biddable. If the biddable
+      // field is absent (undefined), keep the goal — treating undefined as
+      // false previously dropped every goal and mislabelled campaign-specific
+      // goals (e.g. Add to cart + Purchase) as "Account default".
+      if (get_(r, 'campaignConversionGoal.biddable') === false) return;
       var category = pretty_(get_(r, 'campaignConversionGoal.category'));
       if (category && campaign.goals.indexOf(category) === -1) {
         campaign.goals.push(category);
@@ -2048,6 +2052,9 @@ function derive_(m) {
   m.convGap = Math.max(0, m.allConversions - m.conversions);
   m.totalConv = m.conversions + m.viewThrough;
   m.vtcShare = safeDiv_(m.viewThrough, m.totalConv);
+  // Cost per conversion counting view-through alongside click/engaged conv.
+  // The full-funnel efficiency number Demand Gen should be judged on.
+  m.cpaVtc = safeDiv_(m.cost, m.totalConv);
   return m;
 }
 
@@ -2511,32 +2518,63 @@ function getAnalysisPrompt() {
  */
 function buildDeckPrompt_(data) {
   var a = data.account;
+  var t = data.totals || {};
+  var p = data.prior || null;
   var lines = [];
   function push(line) { lines.push(line === undefined ? '' : String(line)); }
+  function money0(v) {
+    return (a.currency || '') + ' ' + Math.round(Number(v) || 0).toLocaleString();
+  }
+  function pct1(v) { return ((Number(v) || 0) * 100).toFixed(1) + '%'; }
+  function pct0(v) { return Math.round((Number(v) || 0) * 100) + '%'; }
+  function dlt(key) {
+    if (!p || !p[key]) return 'n/a';
+    var ch = ((t[key] || 0) - p[key]) / p[key];
+    return (ch >= 0 ? '+' : '') + Math.round(ch * 100) + '%';
+  }
 
   var notes = {};
   try { notes = readCommentary_(); } catch (e) { notes = {}; }
+  var overrides = {};
+  try { overrides = readOverrides_(); } catch (e) { overrides = {}; }
+  var groundTruth = overrides['settingsGroundTruth'] || '';
 
-  push('Rebuild this Google Ads Demand Gen audit as a polished, client-ready');
-  push('deck for Lockhern Digital. A rough .pptx is attached (auto-exported from');
-  push('Google Slides): the numbers are correct and the structure is sound, but');
-  push('it is script-laid-out — generic titles, dense tables, no hierarchy, no');
-  push('brand. Turn it into something Lockhern would put in front of a client,');
-  push('without changing what it says, and with our point of view on it.');
+  push('Build a polished, client-ready Lockhern Digital audit deck from the');
+  push('material below and the rough .pptx attached (auto-exported from Google');
+  push('Slides). The numbers are correct; your job is the argument, the design,');
+  push('and the point of view. Use a strong model for this (Opus). Do not just');
+  push('reformat the rough deck. Rebuild it as a designed, visual document.');
   push('');
   push('## Account');
   push('');
   push('- Account: ' + a.name + ' (' + a.id + ')');
   push('- Window: ' + a.start + ' to ' + a.end +
-       (a.priorStart ? ', compared with ' + a.priorStart + ' to ' + a.priorEnd : ''));
-  push('- Currency: ' + a.currency + '.');
-  push('- Channel: Google Ads Demand Gen only.');
+       (a.priorStart ? ', vs prior ' + a.priorStart + ' to ' + a.priorEnd : ''));
+  push('- Currency: ' + a.currency + '. Channel: Google Ads Demand Gen only.');
   push('');
 
-  push('## Our point of view — carry this argument through the deck');
+  push('## Hard rules (read first)');
   push('');
-  push('This is not a neutral data dump. The deck argues a thesis: **' +
-       POV.title + '.**');
+  push('1. NEVER use an em dash or en dash (the long or medium hyphen) anywhere');
+  push('   in the deck. They are the clearest tell of AI writing. Use periods,');
+  push('   commas, colons, or a new line instead. A normal hyphen inside a word');
+  push('   is fine.');
+  push('2. Every content slide is VISUAL, not a table dump. See the design');
+  push('   system below. If a slide would be a wall of numbers, redesign it as');
+  push('   stat callouts, a chart, a comparison, or an icon-led list.');
+  push('3. Every content slide has one assertion title (a finding, with its');
+  push('   number) and one supporting line. No label titles like "Audiences".');
+  push('4. Connect the point of view to specific settings and structure. The');
+  push('   reader should always see WHY a finding matters through our lens.');
+  push('5. Treat any settings screenshots or pasted settings the analyst attached');
+  push('   to this conversation as the AUTHORITATIVE source. Where they conflict');
+  push('   with a value in the rough deck or below, trust the screenshot and');
+  push('   correct the number. This is how we fix settings the API cannot read.');
+  push('');
+
+  push('## Our point of view. Carry this argument through the whole deck.');
+  push('');
+  push('The thesis: ' + POV.title + '.');
   push('');
   push(POV.thesis);
   push('');
@@ -2548,153 +2586,111 @@ function buildDeckPrompt_(data) {
   push('');
   push('Frame expectations plainly: ' + POV.expectation);
   push('');
-
-  push('## Lockhern brand system — apply consistently');
+  push("## Lockhern brand system");
   push('');
-  push('Colours (use as the entire palette; do not introduce others):');
-  push('- Primary blue ' + BRAND.primary + ' — headlines, key figures, chart 1');
-  push('- Secondary blue ' + BRAND.secondary + ' — secondary series, accents');
-  push('- Tertiary navy ' + BRAND.tertiary + ' — title/closing backgrounds, deep fills');
-  push('- Ink ' + BRAND.ink + ' — body text');
-  push('- Dark gray ' + BRAND.grayDark + ' — captions, muted labels');
-  push('- Mid gray ' + BRAND.grayMid + ' — rules, gridlines');
-  push('- Light gray ' + BRAND.grayLight + ' — card fills, washes, table banding');
-  push('- White ' + BRAND.white);
+  push("Use only these colors:");
+  push('- Primary blue ' + BRAND.primary + ': headlines, key figures, the single accent that marks what matters.');
+  push('- Secondary blue ' + BRAND.secondary + ': secondary chart series.');
+  push('- Tertiary navy ' + BRAND.tertiary + ': the title and closing backgrounds, deep fills.');
+  push('- Ink ' + BRAND.ink + ': body text. Dark gray ' + BRAND.grayDark + ': captions.');
+  push('- Mid gray ' + BRAND.grayMid + ': rules and gridlines. Light gray ' + BRAND.grayLight + ': card fills and table banding. White ' + BRAND.white + '.');
+  push('- Status accents only where needed: green ' + '#1B7F5A' + ' aligned, amber ' + '#C98A1B' + ' worth a look, red ' + '#C24B3C' + ' fix.');
   push('');
-  push('Type: "' + BRAND.titleFont + '" for titles/display, "' + BRAND.bodyFont +
-       '" for body and figures. If unavailable, substitute a clean serif for');
-  push('titles and a humanist sans for body — never default fonts.');
+  push('Type: ' + BRAND.titleFont + ' for titles and display, ' + BRAND.bodyFont + ' for body and figures. If unavailable, substitute a clean serif for titles and a humanist sans for body. Never a default font.');
   push('');
-  push('Logo: place the Lockhern logo on the title and closing slides (white');
-  push('version on the navy background) and a small mark in a consistent corner');
-  push('of content slides. Logo files are provided alongside this prompt; embed');
-  push('them, do not recreate the logo.');
+  push('Logo: the Lockhern logo on the title and closing slides, white version on the navy background, and a small mark in a consistent corner of content slides. Logo files are attached. Embed them, do not redraw the logo.');
   push('');
-  push('Motif: one dark navy (' + BRAND.tertiary + ') title slide and closing');
-  push('slide bookending light content slides. Primary blue is the single accent');
-  push('that marks what matters. No stripes, no accent bars under titles.');
+  push("## Design system. This is where the last version fell short. Follow it.");
   push('');
-
-  push('## Slides, in order');
+  push("- Pick one motif and repeat it: a small filled circle holding a number or a simple line icon, beside every section title. Carry it across every slide.");
+  push("- One navy title slide and one navy closing slide bookend light content slides.");
+  push("- Give numbers hierarchy. The one or two figures that carry a slide are large, 40 to 72 point. Everything else is small and quiet.");
+  push("- Use big stat callouts (a large number with a short label beneath) instead of sentences for key metrics.");
+  push("- For settings and account health, use a status treatment: a green, amber, or red dot or check beside each item. Not a full grid of colored cells.");
+  push("- Turn any ranking into a horizontal bar so the shape reads at a glance. Keep a table only when the reader must look up a specific value.");
+  push("- Charts are native PowerPoint charts with a quiet frame and brand colors. Never paste a screenshot of a chart.");
+  push("- Keep a slide title and its supporting line close together, about 0.1 inch apart, so they read as one unit. Do not leave a large gap between them.");
+  push("- Simple line icons in a brand-blue circle beside section headers. No stock photos, no clip art, no decorative shapes that carry no information.");
+  push("- Canvas 13.3 by 7.5 inches. Left align body copy. Center only the title slide.");
   push('');
-  push('1. **Title** — navy, white logo, account name, window, and the line');
-  push('   "' + POV.title + '" as the framing.');
-  push('2. **Executive summary** — three or four findings, each one line, each');
-  push('   carrying its number. This is the slide people read.');
-  push('3. **How we judge Demand Gen** — a short POV slide stating the lens above');
-  push('   (social not search; creative + landing pages are the levers; measured');
-  push('   on attention and mid-funnel signal). Sets up everything that follows.');
-  push('4. **Headline numbers** — this period vs prior, with real hierarchy: the');
-  push('   two or three figures that matter large, the rest small.');
-  push('5. **What is actually delivering** — entities that exist vs deliver.');
-  push('6. **Creative scorecard — ONE page.** Every creative on a single slide,');
-  push('   styled like the Google Ads video table: a small YouTube thumbnail per');
-  push('   row, the source (advertiser vs Enhanced by Google AI), impressions,');
-  push('   view rate, the 25/50/75/100% watch funnel, conversions and');
-  push('   view-through. Only spill to a second page if the rows genuinely do not');
-  push('   fit. Do NOT make one slide per creative. Thumbnails and per-row data');
-  push('   are in the Creative appendix at the end of this prompt — pull the');
-  push('   thumbnail from each URL. Call out the AI-modified cuts as a group.');
-  push('7. **Channel and surface (ad-format) splits** — donut/bar plus a table.');
-  push('8. **What counted as a conversion** — and whether ATC/Begin Checkout are');
-  push('   Primary (our deliberate stance) or purchase-only. Include each');
-  push('   conversion action\'s view-through and click windows and whether it is');
-  push('   in the bidding column.');
-  push('9. **Campaign settings & configuration** — one slide per campaign, or a');
-  push('   tight table if there are several. Cover ALL of it: bidding strategy +');
-  push('   target CPA/ROAS, daily budget + delivery, conversion goals, new vs');
-  push('   existing customers, ad schedule, locations targeted AND excluded,');
-  push('   languages, audience exclusions, and the AI asset-enhancement toggles');
-  push('   (Shorter/Resized/Enhanced videos, image enhancements, etc.) each shown');
-  push('   ON, OFF, or "review in platform" where the API could not confirm it.');
-  push('   Note that Demand Gen often targets at the AD GROUP level — where a');
-  push('   campaign reads "Set at ad group", show the ad-group targeting. Include');
-  push('   the analyst-verified settings (view-through optimisation, product');
-  push('   feeds, GDN, devices, etc.). This is where misconfiguration hides —');
-  push('   make it legible, and flag anything that narrows delivery or starves');
-  push('   the algorithm of signal.');
-  push('10. **Structure** — campaigns, ad groups, audiences, demographics, assets.');
-  push('11. **Spend over time.**');
-  push('12. **How to read these numbers** — the caveats, kept in full.');
-  push('13. **Closing** — navy, logo, and the one recommendation that matters most.');
+  push("## The narrative. Build these slides, in this order.");
   push('');
-
+  push("Adapt the exact count to the content, but keep this spine and these four buckets: settings, structure, video performance, video and content strategy, all tied to the point of view.");
+  push('');
+  push('1. TITLE. Navy, white logo, account name, window, and the line: ' + POV.title + '.');
+  push("2. HOW WE JUDGE DEMAND GEN. A visual one-slide framework of our lens. Three pillars, each an icon in a blue circle with a short bold claim and one supporting line: The channel (Demand Gen buys attention on YouTube, a social and creative environment, judge it like social not search), The levers (creative and landing pages move this channel, a standard product page is usually not enough), The signal (we grade attention and mid funnel signal, not last click alone). Then a compact strip of the exact signals we grade on: video completion at 25, 50, 75, 100 percent, view-through, attributed brand search, brand lift, and cost per micro conversion. This slide must feel like a point of view. Do not render it as three columns of body text, which is how the last version failed.");
+  push("3. EXECUTIVE SUMMARY. Three findings that matter for THIS account, as large stat callouts, chosen from the findings list below. Do NOT lead with the percent of conversions outside the bidding column, and do NOT use the percent of ads that got an impression: most campaigns were intentionally paused this window, so that number is meaningless. The real headlines here are that creative is unmeasurable because one ad carries every video, that view-through carries most of the attributed action, and the single settings or structure point that matters most.");
+  push("4. SETTINGS: WHAT IS ALIGNED, WHAT TO FIX. A core bucket. Show only high-signal settings, each marked aligned, worth a look, or fix, and tie each to the point of view. Prioritize: conversion goals (which actions the campaign optimizes toward, and whether Add to Cart and Begin Checkout are among them), the AI asset enhancements (which are on or off, and which we would change and why), new versus existing customer bidding and whether the existing-customer list is excluded from prospecting, and view-through conversion optimization. Do not show any setting you cannot confirm. If the analyst attached settings screenshots, they are the source of truth here.");
+  push("5. CAMPAIGN STRUCTURE. Frame it correctly. Campaigns paused in this window are intentional and seasonal, not broken, so never call a paused campaign a failure or imply the account is mostly dead. The real structural finding is creative packing: one ad carries several videos, so Google reports a single blended completion rate and no individual video can be measured. Make that the headline. Show live versus paused simply, as context, not as the story.");
+  push("6. VIDEO PERFORMANCE. The one-page creative scorecard, a thumbnail per creative, all on one slide. Columns: source, impressions, cost, view rate, the 25 / 50 / 75 / 100 completion funnel, conversions, view-through, cost per conversion, and cost per conversion including view-through. Keep the title and subline close. Add one takeaway line: which creative is most efficient and which holds attention. Where watch depth is blank, add a small footnote saying it is blended because the videos share one ad.");
+  push("7. VIDEO AND CONTENT STRATEGY. Our creative recommendations through the lens, specific to what the scorecard shows: split every ad to one video each to recover per-creative measurement, build purpose-made landing pages rather than the standard product page, seed audiences from watch behavior and top organic and Meta content, and review the AI shortened and enhanced cuts against the originals. Make it concrete and prioritized, not generic.");
+  push("8. CHANNEL AND SURFACE EFFICIENCY. A donut or bar of spend by surface plus efficiency. Drop any surface under about one percent of spend rather than cluttering the slide with it. State the takeaway plainly: where the money goes and where it is most and least efficient, comparing view rate against cost per action. If a surface shows a zero percent view rate, add a small caveat that view rate is not measured for that surface. Do not present zero percent as a real result.");
+  push("9. AUDIENCE AND DEMOGRAPHICS. A visual talking-point slide, not four tables. The audiences that carry conversions and the age and gender skew, shown as bars or callouts, with one or two sentences on what it means for targeting.");
+  push("10. THE ONE THING. Navy closing slide. The single highest-leverage action stated plainly with why it matters, then a short list of the next moves.");
+  push('');
+  push("Do not include a daily pacing slide, and do not include a separate methodology-notes slide. Fold only the two caveats that matter into small footnotes where they apply: view-through sits outside cost per action and ROAS, and watch depth is blended because the videos share an ad.");
+  push('');
   if ((data.readout || {}).conversions) {
-    push('## The findings, for writing titles');
+    push('## Findings you may use for the executive summary and titles');
     push('');
-    push('These are the conclusions the deck supports. Use them to write titles');
-    push('that assert something, rather than naming the contents of the slide.');
-    push('');
-    data.readout.conversions.forEach(function(line) {
-      push('- ' + plainText_(line));
-    });
+    data.readout.conversions.forEach(function(line) { push('- ' + plainText_(line)); });
     push('');
   }
-
-  // Per-slide analyst notes captured in the dashboard storyboard. These are the
-  // human's focal points — treat them as direction, not data.
-  var noteKeys = Object.keys(notes || {}).filter(function(k) {
-    return String(notes[k] || '').trim();
-  });
+  var noteKeys = Object.keys(notes || {}).filter(function(k) { return String(notes[k] || '').trim(); });
   if (noteKeys.length) {
-    push('## Analyst direction — emphasise these (from the storyboard notes)');
+    push('## Analyst direction. Emphasize these; they override generic emphasis.');
     push('');
-    push('The Lockhern analyst reviewed the data and flagged what to stress on');
-    push('specific slides. Honour these; they override generic emphasis.');
+    noteKeys.forEach(function(k) { push('- ' + k + ': ' + String(notes[k]).trim()); });
     push('');
-    noteKeys.forEach(function(k) {
-      push('- **' + k + '**: ' + String(notes[k]).trim());
+  }
+  if (groundTruth) {
+    push('## Analyst-provided settings, authoritative');
+    push('');
+    push('The analyst pasted the real settings below from Google Ads. Trust these over any API-derived value, and over the rough deck, wherever they conflict.');
+    push('');
+    push(groundTruth);
+    push('');
+  }
+  push('## Authoritative data. Use these exact numbers.');
+  push('');
+  push('Totals this window:');
+  push('- Spend ' + money0(t.cost) + ' (' + dlt('cost') + ' vs prior).');
+  push('- Conversions ' + (Number(t.conversions) || 0).toFixed(0) + ' (' + dlt('conversions') + '), cost per conversion ' + money0(t.cpa) + '.');
+  push('- View-through conversions ' + Math.round(t.viewThrough || 0) + ', which is ' + pct0(t.vtcShare) + ' of total attributed action.');
+  push('- Cost per conversion including view-through ' + money0(t.cpaVtc) + '.');
+  push('- Impressions ' + Math.round(t.impressions || 0).toLocaleString() + ' (' + dlt('impressions') + '), clicks ' + Math.round(t.clicks || 0).toLocaleString() + ' (' + dlt('clicks') + '), CTR ' + pct1(t.ctr) + '.');
+  push('');
+  var pk = data.creativePacking || {};
+  push('Structure: ' + (data.campaigns || []).length + ' campaigns, ' + (data.adGroups || []).length + ' ad groups, ' + (data.ads || []).length + ' ads delivered in this window. Creative packing: ' + (pk.multiVideoAds || 0) + ' ad(s) carry more than one video, up to ' + (pk.maxVideosInOneAd || 0) + ' in one ad, so ' + (pk.videosAffected || 0) + ' video(s) have no individual completion rate.');
+  push('');
+  if ((data.settings || {}).campaigns && data.settings.campaigns.length) {
+    push('Settings per campaign the API returned (paused campaigns are intentional):');
+    data.settings.campaigns.slice(0, 6).forEach(function(c) {
+      push('- ' + c.name + ' [' + c.status + ']: conversion goals ' + ((c.goals || []).join(', ') || 'account default') + '; bidding ' + (c.bidding || '') + (c.target ? ' ' + c.target : '') + '; new vs existing ' + (c.acquisition || '') + '; excluded audiences ' + ((c.excludedAudiences || []).join(', ') || 'none') + '.');
+      var ai = (c.automation || []).filter(function(x) { return x.verified; }).map(function(x) { return x.name + '=' + (x.on ? 'on' : 'off'); });
+      if (ai.length) push('  AI enhancements confirmed by API: ' + ai.join(', ') + '.');
+      var ver = CAMPAIGN_REVIEW_FIELDS.map(function(f) { var v = overrides[c.id + '|' + f[0]]; return v ? (f[1] + '=' + v) : null; }).filter(function(x) { return x; });
+      if (ver.length) push('  Analyst-verified: ' + ver.join('; ') + '.');
     });
     push('');
   }
-
-  push('## What to change');
-  push('');
-  push('**Titles become takeaways.** "Audiences" says nothing. "Three audiences');
-  push('carry 80% of conversions" is a title. Every content slide gets a title');
-  push('that states the finding and a smaller line beneath naming the data.');
-  push('Where the numbers on a slide do not support an assertion, keep a');
-  push('descriptive title rather than inventing one.');
-  push('');
-  push('**Give the numbers hierarchy.** Headline figures large and immediately');
-  push('legible; supporting detail recedes.');
-  push('');
-  push('**Turn ranking tables into comparisons.** A bar makes the shape visible.');
-  push('Keep tables where the reader looks values up; convert where they need to');
-  push('see a pattern. Do not convert everything reflexively.');
-  push('');
-  push('**Mark what needs attention.** Where a figure is bad, let the design say');
-  push('so — colour, weight, placement. Do not make everything look positive.');
-  push('');
-  push('## Constraints');
-  push('');
-  push('- Never change a number, a label, or a date. If a figure looks wrong,');
-  push('  flag it in your reply rather than correcting it on the slide.');
-  push('- Keep the caveats slide, and keep every caveat on it. Parts of this data');
-  push('  are inferred or missing; dropping it makes the deck overclaim.');
-  push('- Keep watch-depth figures labelled exactly as they are. Where a figure');
-  push('  describes the ad rather than an individual video, do not relabel it.');
-  push('- No stock photography, no icons standing in for data, no decorative');
-  push('  chrome that carries no information.');
-  push('- Build with pptxgenjs (LAYOUT_WIDE, 13.3 x 7.5in) or python-pptx.');
-  push('  Return a new .pptx. Run the pptx validator and fix what it flags.');
-  push('');
-
-  // Machine-readable creative list so the redesigner can build the one-page
-  // thumbnail scorecard without re-deriving anything.
+  if ((data.surfaceMix || []).length) {
+    push('Surface split (surface, spend, share, conversions, cost per action, view rate):');
+    var stot = data.surfaceMix.reduce(function(s, r) { return s + (r.cost || 0); }, 0);
+    data.surfaceMix.forEach(function(r) {
+      push('- ' + r.surface + ': ' + money0(r.cost) + ', ' + pct0(stot ? r.cost / stot : 0) + ' of spend, ' + (Number(r.conversions) || 0).toFixed(0) + ' conv, ' + (r.conversions ? money0(r.cpa) : 'n/a') + ' CPA, ' + pct1(r.viewRate) + ' view rate.');
+    });
+    push('');
+  }
   var vids = (data.videos || []).slice(0, DECK.CREATIVE_ROWS_PER_PAGE * 3);
   if (vids.length) {
-    push('## Creative appendix — data for the one-page scorecard');
+    push('Creative appendix, highest spend first. thumb is the poster to embed. src is advertiser or Enhanced by Google AI. q25..q100 are completion shares. cpa_all includes view-through.');
     push('');
-    push('One row per creative, highest spend first. thumb = YouTube poster to');
-    push('embed. src = advertiser upload or Enhanced by Google AI. q25..q100 =');
-    push('share of impressions reaching that quartile ("-" when not measured).');
-    push('');
-    push('| Creative | src | thumb | impr | cost | view_rate | q25 | q50 | q75 | q100 | conv | view_thru |');
-    push('|---|---|---|---|---|---|---|---|---|---|---|---|');
+    push('| Creative | src | thumb | impr | cost | view_rate | q25 | q50 | q75 | q100 | conv | view_thru | cpa | cpa_all |');
+    push('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
     vids.forEach(function(v) {
-      function q(x) { return (v.p25 || v.p50 || v.p75 || v.p100)
-          ? ((Number(v[x]) || 0) * 100).toFixed(0) + '%' : '-'; }
+      function q(x) { return (v.p25 || v.p50 || v.p75 || v.p100) ? ((Number(v[x]) || 0) * 100).toFixed(0) + '%' : '-'; }
+      var tc = (Number(v.conversions) || 0) + (Number(v.viewThrough) || 0);
       push('| ' + [
         String(v.title || '').replace(/\|/g, '/').slice(0, 48),
         videoSource_(v.title) === 'Advertiser' ? 'advertiser' : 'ai',
@@ -2704,14 +2700,21 @@ function buildDeckPrompt_(data) {
         ((Number(v.viewRate) || 0) * 100).toFixed(1) + '%',
         q('p25'), q('p50'), q('p75'), q('p100'),
         (Number(v.conversions) || 0).toFixed(1),
-        Math.round(v.viewThrough || 0)
+        Math.round(v.viewThrough || 0),
+        v.conversions ? (Number(v.cost) / v.conversions).toFixed(0) : '-',
+        tc ? (Number(v.cost) / tc).toFixed(0) : '-'
       ].join(' | ') + ' |');
     });
     push('');
   }
-
-  push('Before you start, tell me the design direction you have chosen and why');
-  push('it suits this client. Then build it.');
+  push('## Constraints');
+  push('');
+  push("- Never change a number, label, or date, unless a settings screenshot the analyst attached corrects it. If a figure looks wrong and you have no screenshot, flag it in your reply rather than editing the slide.");
+  push("- Keep the two caveats above as small footnotes where they apply.");
+  push("- Build with pptxgenjs at LAYOUT_WIDE, or python-pptx. Return a new .pptx and run the pptx validator, fixing whatever it flags.");
+  push("- Final check before returning: search the whole deck for an em dash or en dash and remove every one.");
+  push('');
+  push("Before you build, tell me in three sentences the three executive-summary findings you chose and the design direction you will take. Then build it.");
 
   return lines.join('\n');
 }
@@ -2873,7 +2876,8 @@ function saveOverride(key, value) {
     try { sheet.hideSheet(); } catch (e) {}
   }
 
-  var value = String(value == null ? '' : value).substring(0, 500);
+  // Field overrides are short; the pasted settings ground-truth blob needs room.
+  var value = String(value == null ? '' : value).substring(0, 12000);
   var lastRow = sheet.getLastRow();
   var found = 0;
   if (lastRow > 1) {
@@ -3774,8 +3778,9 @@ function deckForAccount_(data) {
         ['Click rate', pct(t.ctr), p ? pct(p.ctr) : '—', delta('ctr')],
         ['Conversions', dec(t.conversions), p ? dec(p.conversions) : '—', delta('conversions')],
         ['Cost per conversion', fmtMoney(t.cpa), p ? fmtMoney(p.cpa) : '—', delta('cpa')],
-        ['All conversions', dec(t.allConversions), p ? dec(p.allConversions) : '—', delta('allConversions')],
-        ['Outside bidding column', dec(t.convGap), p ? dec(p.convGap) : '—', delta('convGap')]
+        ['View-through conv.', dec(t.viewThrough), p ? dec(p.viewThrough) : '—', delta('viewThrough')],
+        ['View-through share', pct(t.vtcShare), p ? pct(p.vtcShare) : '—', '—'],
+        ['Cost per conv. incl. view-through', fmtMoney(t.cpaVtc), p ? fmtMoney(p.cpaVtc) : '—', delta('cpaVtc')]
       ]);
   });
 
@@ -3841,9 +3846,13 @@ function deckForAccount_(data) {
         pct(v.viewRate), x, ty + 12, tileW, 11, 7, false,
         ai ? T.accent : T.muted);
     box(slide, watchStr(v), x, ty + 22, tileW, 11, 7, false, T.muted);
+    var tc = (Number(v.conversions) || 0) + (Number(v.viewThrough) || 0);
     box(slide, dec(v.conversions) + ' conv · ' + int(v.viewThrough) + ' vt · $' +
-        fmtMoney(v.cost) + ' · ' + int(v.impressions) + ' impr',
+        fmtMoney(v.cost),
         x, ty + 32, tileW, 11, 7, false, T.muted);
+    box(slide, (v.conversions ? 'CPA $' + fmtMoney(v.cost / v.conversions) : 'CPA n/a') +
+        ' · ' + (tc ? 'w/ vt $' + fmtMoney(v.cost / tc) : 'w/ vt n/a'),
+        x, ty + 42, tileW, 11, 7, false, T.muted);
   }
 
   function creativeGridPage(chunk, pageIndex, pageCount) {
@@ -3997,28 +4006,34 @@ function deckForAccount_(data) {
     box(slide, 'TARGETING & BIDDING', M, 82, 316, 14, 10, true, T.accent);
     box(slide, left, M, 100, 316, contentH, 9.5, false, T.ink);
 
-    // AI enhancements — override wins, then the API's verified state, else review.
+    // AI enhancements — analyst override wins, then the API's verified state.
+    // Toggles the API never reported and the analyst never set are omitted:
+    // an unconfirmed setting should not appear as a loud "review" line.
     var automation = c.automation || [];
-    var toggles = automation.length
-        ? automation.map(function(a) {
-            var o = ovr_(c.id + '|asset|' + a.type);
-            if (o) return '●  ' + a.name + '  —  ' +
-                (o === 'on' ? 'ON' : 'OFF') + ' (manual)';
-            if (a.verified) return (a.on ? '●  ' : '○  ') + a.name + '  —  ' +
-                (a.on ? 'ON' : 'OFF');
-            return '⚠  ' + a.name + '  —  review in platform';
-          }).join('\n')
-        : '(no toggles reported — review in platform)';
+    var toggleItems = automation.map(function(a) {
+      var o = ovr_(c.id + '|asset|' + a.type);
+      if (o) return '●  ' + a.name + ':  ' + (o === 'on' ? 'ON' : 'OFF') +
+          ' (verified)';
+      if (a.verified) return (a.on ? '●' : '○') + '  ' + a.name +
+          ':  ' + (a.on ? 'ON' : 'OFF');
+      return null;
+    }).filter(function(x) { return x; });
+    var toggles = toggleItems.length ? toggleItems.join('\n')
+        : 'Not reported by the API. Verify AI enhancements in the platform.';
 
-    var reviewLines = CAMPAIGN_REVIEW_FIELDS.map(function(f) {
+    var reviewItems = CAMPAIGN_REVIEW_FIELDS.map(function(f) {
       var v = ovr_(c.id + '|' + f[0]);
-      return (v ? '●  ' : '⚠  ') + f[1] + '  —  ' + (v || 'review in Google Ads');
-    }).join('\n');
+      return v ? ('●  ' + f[1] + ':  ' + v) : null;
+    }).filter(function(x) { return x; });
 
     box(slide, 'AI ASSET ENHANCEMENTS', M + 336, 82, 296, 14, 10, true, T.accent);
     box(slide, toggles, M + 336, 100, 296, 150, 9, false, T.ink);
-    box(slide, 'VERIFY IN PLATFORM', M + 336, 258, 296, 14, 10, true, T.accent);
-    box(slide, reviewLines, M + 336, 276, 296, contentH - 194, 9, false, T.ink);
+    if (reviewItems.length) {
+      box(slide, 'VERIFIED IN PLATFORM', M + 336, 258, 296, 14, 10, true,
+          T.accent);
+      box(slide, reviewItems.join('\n'), M + 336, 276, 296, contentH - 194, 9,
+          false, T.ink);
+    }
     return slide;
   }
 
@@ -4150,41 +4165,9 @@ function deckForAccount_(data) {
   });
 
   // --- daily trend ---------------------------------------------------------
-  section('Trend', false, function() {
-    if (!(data.daily || []).length) return;
-    if (!chartSlide('daily', 'Spend over time', ['Date', 'Spend'],
-        data.daily.map(function(d) { return [d.date, d.cost]; }), 'line')) {
-      tableSlide('daily', 'Spend over time', ['Date', 'Spend', 'Clicks', 'Conv'],
-        data.daily.map(function(d) {
-          return [d.date, fmtMoney(d.cost), int(d.clicks), dec(d.conversions)];
-        }));
-    }
-  });
-
-  // --- caveats, always attempted ------------------------------------------
-  section('Caveats', true, function() {
-    var last = deck.appendSlide(SlidesApp.PredefinedLayout.BLANK);
-    header(last, 'How to read these numbers');
-    var caveats = [
-      'Rates are computed from raw counters, so grouped figures are exact.',
-      '"All conversions" counts every tracked action. "Conversions" counts only ' +
-        'those the bidding algorithm optimises toward.',
-      'View-through conversions are reported separately and sit outside cost ' +
-        'per action and ROAS.',
-      'Thumbnails are each video\u2019s own poster frame, not a screenshot of a ' +
-        'chosen moment.'
-    ];
-    if ((data.videos || []).some(function(v) { return v.depthNote === 'shared-ad'; })) {
-      caveats.push('Watch depth is absent per video because these creatives ' +
-        'share an ad, and an ad reports one blended rate across every video in it.');
-    }
-    if (skipped.length) {
-      caveats.push('Sections omitted to stay inside the execution limit: ' +
-        skipped.join(', ') + '. They are all in the spreadsheet.');
-    }
-    box(last, caveats.map(function(line) { return '\u2022   ' + line; }).join('\n\n'),
-        M, 88, W - M * 2, H - 110, 11, false, T.ink);
-  });
+  // Daily pacing and a standalone methodology-notes slide are intentionally
+  // omitted: pacing is rarely the story, and the deck-design prompt folds the
+  // two caveats that matter into footnotes on the slides where they apply.
 
   try {
     var scratch = ss && ss.getSheetByName(CHART_SHEET);

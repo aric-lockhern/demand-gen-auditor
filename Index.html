@@ -630,6 +630,21 @@
     color: var(--ink); margin: 16px 0 8px;
   }
   .ag-camp:first-of-type { margin-top: 4px; }
+  .gtbox {
+    background: #EEF3FC; border: 1px solid #C7D8F4; border-radius: 12px;
+    padding: 14px 16px; margin: 4px 0 18px;
+  }
+  .gtbox .rb-title { color: var(--accent); }
+  textarea.gt-paste {
+    width: 100%; min-height: 92px; resize: vertical; border-radius: 10px;
+    border: 1px solid #C7D8F4; background: #fff; padding: 9px 11px;
+    font-family: var(--sans); font-size: 13px; color: var(--ink);
+    line-height: 1.5; margin-top: 8px;
+  }
+  textarea.gt-paste:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(49,122,224,.12);
+  }
 
   @media print {
     nav.tabs, nav.subtabs, .toolbar, .modebar, .star, .story-actions,
@@ -1434,6 +1449,17 @@ function drawSettings() {
       '</div>';
   }
 
+  var gt = ovrGet('settingsGroundTruth');
+  out += '<div class="gtbox"><div class="rb-title">Ground truth: paste or ' +
+    'screenshot your settings</div><div class="rb-sub">The API can’t read every ' +
+    'Demand Gen setting, and sometimes reads one wrong (e.g. conversion goals). ' +
+    'Paste the campaign and ad-group settings copied from Google Ads here, or ' +
+    'when you build the deck just drag the settings screenshots into the Claude ' +
+    'chat. Either one overrides the audit and flows into the deck as the source ' +
+    'of truth.</div><textarea class="gt-paste" data-key="settingsGroundTruth" ' +
+    'data-state="st-gt" placeholder="Paste settings copied from Google Ads…">' +
+    esc(gt) + '</textarea><span class="ovr-state" id="st-gt"></span></div>';
+
   out += '<div class="subhead">Campaign settings</div>';
   out += '<div class="setgrid">' + settings.campaigns.map(function(c) {
     function row(key, value, flag) {
@@ -1527,6 +1553,17 @@ function bindSettings() {
         if (el.tagName === 'SELECT') render();
       });
     })(els[i]);
+  }
+  // The ground-truth paste is long text: debounce-save while typing/pasting.
+  var gt = document.querySelector('#panel-settings textarea.gt-paste');
+  if (gt) {
+    var timer = null;
+    gt.addEventListener('input', function() {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function() {
+        ovrSet('settingsGroundTruth', gt.value, 'st-gt');
+      }, 700);
+    });
   }
 }
 
