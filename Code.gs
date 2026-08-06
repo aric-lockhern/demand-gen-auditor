@@ -3674,14 +3674,16 @@ function buildBundle(deckUrls, screenshots) {
     // Rough deck to .pptx. Try the Slides export path, then a fallback, and
     // report the failure rather than silently dropping it.
     (deckUrls || []).forEach(function(u, i) {
-      var m = String(u).match(/\/d\/([a-zA-Z0-9_-]+)/);
-      if (!m) { warnings.push('Could not read a deck URL.'); return; }
+      // SlidesApp.getUrl() returns the "open?id=" form, not "/d/{id}/", so use
+      // driveId_ which handles both rather than a "/d/"-only regex.
+      var id = driveId_(u);
+      if (!id) { warnings.push('Could not read a deck URL: ' + u); return; }
       var name = (deckUrls.length > 1 ? 'rough-deck-' + (i + 1) : 'rough-deck') +
           '.pptx';
-      var urls = ['https://docs.google.com/presentation/d/' + m[1] + '/export/pptx',
-                  'https://docs.google.com/presentation/d/' + m[1] +
+      var urls = ['https://docs.google.com/presentation/d/' + id + '/export/pptx',
+                  'https://docs.google.com/presentation/d/' + id +
                       '/export?format=pptx',
-                  'https://www.googleapis.com/drive/v3/files/' + m[1] +
+                  'https://www.googleapis.com/drive/v3/files/' + id +
                       '/export?mimeType=' + encodeURIComponent(
                       'application/vnd.openxmlformats-officedocument.' +
                       'presentationml.presentation')];
