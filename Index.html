@@ -537,6 +537,13 @@
     text-decoration: underline; font-family: var(--sans);
   }
   .linkbtn:hover { color: var(--accent); }
+  .logo-upl {
+    margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rule);
+  }
+  .logo-upl-h { font-weight: 600; font-size: 13.5px; color: var(--ink); }
+  .logo-upl-sub {
+    display: block; font-size: 12.5px; color: var(--muted); margin: 2px 0 4px;
+  }
   .shot .shot-n {
     display: block; font-size: 10.5px; color: var(--muted); padding: 4px 6px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -844,8 +851,8 @@ document.getElementById('root').innerHTML =
       '</div></div>' +
       '<div class="wstep locked" id="wstep2"><div class="wnum">2</div>' +
         '<div class="wbody">' +
-        '<div class="wtitle">Add settings screenshots</div>' +
-        '<div class="wsub">Optional but recommended. Drop or paste screenshots ' +
+        '<div class="wtitle">Add settings screenshots and an optional logo</div>' +
+        '<div class="wsub">Recommended. Drop or paste screenshots ' +
           'of each campaign’s settings, the ad-group settings, and the ' +
           'ad-group audience with its exclusions. Claude treats these as the ' +
           'source of truth.</div>' +
@@ -854,6 +861,14 @@ document.getElementById('root').innerHTML =
         '<input type="file" id="shotInput" accept="image/*" multiple hidden>' +
         '<div class="shotstatus" id="shotStatus"></div>' +
         '<div class="shots" id="shots"></div>' +
+        '<div class="logo-upl">' +
+          '<span class="logo-upl-h">Brand logo (optional)</span>' +
+          '<span class="logo-upl-sub">Use a specific or client logo for this ' +
+            'deck. Defaults to the Lockhern logo from Drive if left empty.</span>' +
+          '<button class="linkbtn" id="logoBtn">Add logo image</button>' +
+          '<input type="file" id="logoInput" accept="image/*" multiple hidden>' +
+          '<div class="shots" id="uilogos"></div>' +
+        '</div>' +
         '<button class="linkbtn" id="skipShots">Skip, build without ' +
           'screenshots</button>' +
       '</div></div>' +
@@ -982,6 +997,7 @@ document.getElementById('promptBtn').onclick = function() {
 var deckPoll = null;
 var DECK_URLS = [];      // set once the rough deck builds
 var SHOTS = [];          // [{name, b64}] pasted/dropped screenshots
+var UI_LOGOS = [];       // [{name, b64}] optional logo(s) for this deck
 var SKIPPED_SHOTS = false;
 var LAUNCH_MESSAGE = 'Attached is a Demand Gen audit build bundle (a .zip). ' +
     'Unzip it and follow PROMPT.md exactly to produce the branded Lockhern ' +
@@ -1103,6 +1119,32 @@ function renderShots() {
   if (SHOTS.length) SKIPPED_SHOTS = false;   // adding one un-skips
   refreshBundleGate();
 }
+function addLogoFile(file) {
+  if (!file || String(file.type || '').indexOf('image/') !== 0) return;
+  var reader = new FileReader();
+  reader.onload = function() {
+    UI_LOGOS.push({ name: file.name || ('logo-' + (UI_LOGOS.length + 1)),
+                    b64: reader.result });
+    renderUiLogos();
+  };
+  reader.readAsDataURL(file);
+}
+function renderUiLogos() {
+  var el = document.getElementById('uilogos');
+  if (!el) return;
+  el.innerHTML = UI_LOGOS.map(function(s, i) {
+    return '<div class="shot"><img src="' + s.b64 + '" alt="">' +
+        '<span class="shot-ok" title="Added">✓</span>' +
+        '<button class="shot-x" data-i="' + i + '" title="Remove">×</button>' +
+        '<span class="shot-n">' + esc(s.name) + '</span></div>';
+  }).join('');
+  var xs = el.querySelectorAll('.shot-x');
+  for (var i = 0; i < xs.length; i++) {
+    xs[i].onclick = function() {
+      UI_LOGOS.splice(+this.getAttribute('data-i'), 1); renderUiLogos();
+    };
+  }
+}
 (function wireDropzone() {
   var dz = document.getElementById('dropzone');
   var input = document.getElementById('shotInput');
@@ -1121,6 +1163,15 @@ function renderShots() {
     var files = (e.dataTransfer && e.dataTransfer.files) || [];
     for (var i = 0; i < files.length; i++) addShotFile(files[i]);
   });
+  var logoBtn = document.getElementById('logoBtn');
+  var logoInput = document.getElementById('logoInput');
+  if (logoBtn && logoInput) {
+    logoBtn.onclick = function() { logoInput.click(); };
+    logoInput.onchange = function() {
+      for (var i = 0; i < logoInput.files.length; i++) addLogoFile(logoInput.files[i]);
+      logoInput.value = '';
+    };
+  }
   var skip = document.getElementById('skipShots');
   if (skip) skip.onclick = function() {
     SKIPPED_SHOTS = true;
@@ -1179,7 +1230,7 @@ document.getElementById('bundleBtn').onclick = function() {
         btn.disabled = false; lbl.textContent = '';
         toast('Packaging failed: ' + (e && e.message ? e.message : String(e)));
       })
-      .buildBundle(DECK_URLS, SHOTS);
+      .buildBundle(DECK_URLS, SHOTS, UI_LOGOS);
 };
 
 document.getElementById('wPromptBtn').onclick = function() {

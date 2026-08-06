@@ -2728,7 +2728,7 @@ function buildDeckPrompt_(data) {
   push('');
   push('Type: ' + BRAND.titleFont + ' for titles and display, ' + BRAND.bodyFont + ' for body and figures. If unavailable, substitute a clean serif for titles and a humanist sans for body. Never a default font.');
   push('');
-  push('Logo: the Lockhern logo goes on the title and closing slides, white version on the primary blue background, plus a small mark in a consistent corner of content slides. The logos are already in the attached rough deck: the title slide carries the white logo, and the final "Brand assets" slide holds the full-colour, white, and monogram versions. Extract and reuse those image files, then delete the Brand assets slide from your output. Do not redraw the logo. If the deck has no logos, the analyst will attach them or you use the wordmark.');
+  push('Logo: the Lockhern logo goes on the title and closing slides, white version on the primary blue background, plus a small mark in a consistent corner of content slides. The logos are in the attached files: logo-*.png are the default Lockhern logos, and the rough deck also carries them on its title slide and its final "Brand assets" slide. If brand-logo-*.png files are attached, the analyst chose a specific logo for THIS deck, so prefer those over the defaults. Extract and reuse the image files, then delete the Brand assets slide from your output. Do not redraw the logo.');
   push('');
   push("## Design system. This is where the last version fell short. Follow it.");
   push('');
@@ -3645,7 +3645,9 @@ function bundleReadme_() {
     '- rough-deck.pptx      the auto-built deck to redesign',
     '- audit-data.xlsx      the full dataset (all tabs), authoritative',
     '- PROMPT.md            the deck-design prompt, paste this to Claude',
-    '- logo-*.png           the Lockhern logos to embed',
+    '- logo-*.png           the default Lockhern logos to embed',
+    '- brand-logo-*.png     if present, an analyst-uploaded logo for THIS deck;',
+    '                       prefer these over the default logos',
     '- screenshot-*.png     settings and audience screenshots, source of truth',
     '',
     'How to use it:',
@@ -3663,7 +3665,7 @@ function bundleReadme_() {
  * `deckUrls` are the Slides URLs returned by buildDeckForWeb; `screenshots` is
  * an array of {name, b64}. Returns the zip as base64 for a client download.
  */
-function buildBundle(deckUrls, screenshots) {
+function buildBundle(deckUrls, screenshots, uiLogos) {
   try {
     var token = ScriptApp.getOAuthToken();
     var files = [];
@@ -3727,9 +3729,20 @@ function buildBundle(deckUrls, screenshots) {
       var b = p[1] && dataUriToBlob_(p[1], p[0]);
       if (b) { add(b); logoCount++; }
     });
-    if (!logoCount) {
-      warnings.push('No logos found. Check the Logos Drive folder is shared ' +
-          'with this account and re-authorize Drive access.');
+
+    // Optional logo(s) uploaded in the wizard. Named brand-logo-* and flagged
+    // to the designer as the preferred logo for this deck.
+    var uiLogoCount = 0;
+    (uiLogos || []).forEach(function(lg, i) {
+      var uri = String(lg.b64 || '');
+      if (uri.indexOf('data:') !== 0) uri = 'data:image/png;base64,' + uri;
+      var b = dataUriToBlob_(uri, 'brand-logo-' + (i + 1));
+      if (b) { add(b); uiLogoCount++; }
+    });
+
+    if (!logoCount && !uiLogoCount) {
+      warnings.push('No logos found. Upload one in step 2, or check the Logos ' +
+          'Drive folder is shared with this account.');
     }
 
     (screenshots || []).forEach(function(sc, i) {
