@@ -622,6 +622,14 @@
   .ovr-state { font-size: 11px; color: var(--up); margin-left: 6px; opacity: 0;
     transition: opacity .2s; }
   .ovr-state.show { opacity: 1; }
+  .settings-section {
+    margin-top: 26px; padding-top: 22px; border-top: 2px solid var(--rule);
+  }
+  .ag-camp {
+    font-family: var(--display); font-weight: 600; font-size: 15px;
+    color: var(--ink); margin: 16px 0 8px;
+  }
+  .ag-camp:first-of-type { margin-top: 4px; }
 
   @media print {
     nav.tabs, nav.subtabs, .toolbar, .modebar, .star, .story-actions,
@@ -1426,6 +1434,7 @@ function drawSettings() {
       '</div>';
   }
 
+  out += '<div class="subhead">Campaign settings</div>';
   out += '<div class="setgrid">' + settings.campaigns.map(function(c) {
     function row(key, value, flag) {
       return '<div class="setrow"><span class="k">' + esc(key) + '</span>' +
@@ -1498,6 +1507,8 @@ function drawSettings() {
           '</td><td class="num">' + esc(a.counting || '—') + '</td></tr>';
       }).join('') + '</tbody></table></div>';
   }
+
+  out += adGroupSection();
   return out;
 }
 
@@ -1519,42 +1530,55 @@ function bindSettings() {
   }
 }
 
-/** Ad-group-level settings: location, language and audience targeting. */
-function drawAdGroupSettings() {
-  var rows = DATA.adGroupSettings || [];
-  document.getElementById('count').textContent = rows.length + ' ad groups';
-  if (!rows.length) {
-    return '<div class="scroll"><div class="empty">No ad-group settings ' +
-        'returned. Run refresh to pull them.</div></div>';
-  }
-  function list(arr, empty) {
-    return esc((arr || []).join(', ') || empty);
-  }
+/** One ad-group settings card. */
+function adGroupCard(ag) {
+  function list(arr, empty) { return esc((arr || []).join(', ') || empty); }
   function r(k, v, muted) {
     return '<div class="setrow"><span class="k">' + esc(k) + '</span>' +
         '<span class="v"' + (muted ? ' style="color:var(--muted)"' : '') +
         '>' + v + '</span></div>';
   }
-  return '<div class="rb-sub" style="margin:0 0 10px">Demand Gen often targets ' +
-    'at the ad-group level. Audience <em>signals</em> also appear in the ' +
-    'Audiences tab; this view covers location, language and list targeting.' +
-    '</div><div class="setgrid">' + rows.map(function(ag) {
-    return '<div class="setcard"><h3>' + esc(ag.adGroup) + '</h3>' +
-      '<div class="sub">' + esc(ag.status || '') +
-        (ag.type ? ' · ' + esc(ag.type) : '') +
-        (ag.spend ? ' · ' + money(ag.spend) + ' spend' : '') +
-        ' · ' + esc(ag.campaign) + '</div>' +
-      r('Locations', list(ag.locations, 'All locations'),
-          !(ag.locations || []).length) +
-      r('Excluded locations', list(ag.excludedLocations, 'None'),
-          !(ag.excludedLocations || []).length) +
-      r('Languages', list(ag.languages, 'All'), !(ag.languages || []).length) +
-      r('Audience lists', list(ag.audiences, 'None at ad-group level'),
-          !(ag.audiences || []).length) +
-      r('Excluded audiences', list(ag.excludedAudiences, 'None'),
-          !(ag.excludedAudiences || []).length) +
-      '</div>';
-  }).join('') + '</div>';
+  return '<div class="setcard"><h3>' + esc(ag.adGroup) + '</h3>' +
+    '<div class="sub">' + esc(ag.status || '') +
+      (ag.type ? ' · ' + esc(ag.type) : '') +
+      (ag.spend ? ' · ' + money(ag.spend) + ' spend' : '') + '</div>' +
+    r('Locations', list(ag.locations, 'All locations'),
+        !(ag.locations || []).length) +
+    r('Excluded locations', list(ag.excludedLocations, 'None'),
+        !(ag.excludedLocations || []).length) +
+    r('Languages', list(ag.languages, 'All'), !(ag.languages || []).length) +
+    r('Audience lists', list(ag.audiences, 'None at ad-group level'),
+        !(ag.audiences || []).length) +
+    r('Excluded audiences', list(ag.excludedAudiences, 'None'),
+        !(ag.excludedAudiences || []).length) +
+    '</div>';
+}
+
+/**
+ * Ad-group settings, segmented under the Settings tab and grouped by campaign so
+ * it is clear which ad groups belong where. Demand Gen often sets location,
+ * language and list targeting at the ad group rather than the campaign.
+ */
+function adGroupSection() {
+  var rows = DATA.adGroupSettings || [];
+  if (!rows.length) return '';
+  var byCampaign = {}, order = [];
+  rows.forEach(function(ag) {
+    var c = ag.campaign || '—';
+    if (!byCampaign[c]) { byCampaign[c] = []; order.push(c); }
+    byCampaign[c].push(ag);
+  });
+  var html = '<div class="settings-section"><div class="subhead">Ad group ' +
+    'settings</div><div class="rb-sub" style="margin:0 0 12px">Demand Gen often ' +
+    'targets at the ad-group level — location, language and list targeting live ' +
+    'here, which is why a campaign can read “Set at ad group”. Audience ' +
+    '<em>signals</em> also appear in the Audiences tab.</div>';
+  order.forEach(function(c) {
+    html += '<div class="ag-camp">' + esc(c) + '</div>' +
+        '<div class="setgrid">' +
+        byCampaign[c].map(adGroupCard).join('') + '</div>';
+  });
+  return html + '</div>';
 }
 
 /** Conversion actions: rolled up first, then the campaign-level detail. */
@@ -1736,10 +1760,8 @@ var VIEWS = {
     rows: function() { return DATA.videos || []; } },
   surfaces: { label: 'Surfaces', custom: true,
     rows: function() { return DATA.surfaceMix || []; } },
-  settings: { label: 'Campaign settings', custom: true,
+  settings: { label: 'Settings', custom: true,
     rows: function() { return ((DATA.settings || {}).campaigns) || []; } },
-  adGroupSettings: { label: 'Ad group settings', custom: true,
-    rows: function() { return DATA.adGroupSettings || []; } },
   conversions: { label: 'Conversions', custom: true,
     rows: function() { return DATA.conversionActions || []; } },
   ads: { label: 'Ads', rows: function() { return DATA.ads; },
@@ -1827,8 +1849,7 @@ var GROUPS = [
   { label: 'Creative', views: ['videos', 'ads', 'assets'] },
   { label: 'Placement', views: ['surfaces', 'placements'] },
   { label: 'Audience', views: ['audiences', 'demographics'] },
-  { label: 'Structure',
-    views: ['campaigns', 'adGroups', 'settings', 'adGroupSettings'] },
+  { label: 'Structure', views: ['campaigns', 'adGroups', 'settings'] },
   { label: 'Outcomes', views: ['conversions', 'daily'] }
 ];
 
@@ -1898,7 +1919,7 @@ function buildToolbar() {
   if (ACTIVE === 'story') { bar.innerHTML = ''; return; }
 
   // Surfaces has no name search; it has a metric selector driving the donuts.
-  if (ACTIVE === 'settings' || ACTIVE === 'adGroupSettings') {
+  if (ACTIVE === 'settings') {
     bar.innerHTML = '<span class="count" id="count"></span>';
     return;
   }
@@ -2125,11 +2146,6 @@ function render() {
   if (ACTIVE === 'settings') {
     panel.innerHTML = drawSettings();
     bindSettings();
-    return;
-  }
-
-  if (ACTIVE === 'adGroupSettings') {
-    panel.innerHTML = drawAdGroupSettings();
     return;
   }
 
