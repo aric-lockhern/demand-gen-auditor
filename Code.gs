@@ -60,7 +60,12 @@ var CONFIG = {
   // v25 released July 2026, supported to July 2027.
   API_VERSION: 'v25',
 
-  LAST_N_DAYS: 30,
+  // Reporting window. 90 days is the default because a single month is often
+  // too short to read Demand Gen: it builds signal, and view-through and brand
+  // effects lag. Change it in the Settings tab ("Days to report"). A longer
+  // window pulls more rows, so if a run hits the execution ceiling, set
+  // SKIP_PLACEMENTS true first, then shorten this.
+  LAST_N_DAYS: 90,
   COMPARE_PRIOR_PERIOD: true,
 
   // Rows kept per table in the dashboard. The Sheet always gets everything.
@@ -339,7 +344,9 @@ function setup() {
   var rows = [
     ['Accounts to report', '123-456-7890',
      'Comma-separated Google Ads customer IDs. Hyphens optional.'],
-    ['Days to report', 30, 'Size of the reporting window.'],
+    ['Days to report', 90,
+     'Reporting window in days. 90 is a good default for Demand Gen; 30, 60, ' +
+     '180 or 365 also work. Longer windows pull more data.'],
     ['Compare with prior period', true,
      'Adds the preceding window of equal length for deltas.'],
     ['Rows per table', 150, 'Dashboard only. The Sheet always gets everything.'],

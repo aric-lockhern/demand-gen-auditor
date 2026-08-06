@@ -134,6 +134,16 @@ so access is at least tied to an identity, and treat the URL as a credential.
 For a named client, **"Anyone within &lt;your domain&gt;"** plus a PDF export is
 usually the cleaner handoff.
 
+## Reporting window
+
+Defaults to the **last 90 days** (a single month is usually too short to read
+Demand Gen, which builds signal and whose view-through and brand effects lag).
+Change it in the **Settings tab → "Days to report"** (30, 60, 90, 180, 365 all
+work), then run `refresh`. With `Compare with prior period` on, the deck also
+pulls the preceding window of equal length for deltas. Note: re-running `setup()`
+only adds missing settings, so an existing sheet keeps its current value. Edit
+the cell directly to change it.
+
 ## Execution limits
 
 Apps Script allows 6 minutes per execution on consumer accounts and 30 on
