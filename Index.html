@@ -524,6 +524,19 @@
     border: none; border-radius: 50%; background: rgba(14,14,14,.6); color: #fff;
     font-size: 14px; line-height: 1; cursor: pointer;
   }
+  .shot .shot-ok {
+    position: absolute; top: 4px; left: 4px; width: 20px; height: 20px;
+    border-radius: 50%; background: var(--up); color: #fff; font-size: 12px;
+    font-weight: 700; display: flex; align-items: center; justify-content: center;
+  }
+  .shotstatus { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+  .shotstatus.ok { color: var(--up); font-weight: 600; }
+  .linkbtn {
+    display: inline-block; margin-top: 10px; background: none; border: none;
+    padding: 0; color: var(--muted); font-size: 13px; cursor: pointer;
+    text-decoration: underline; font-family: var(--sans);
+  }
+  .linkbtn:hover { color: var(--accent); }
   .shot .shot-n {
     display: block; font-size: 10.5px; color: var(--muted); padding: 4px 6px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -839,24 +852,28 @@ document.getElementById('root').innerHTML =
         '<div class="dropzone" id="dropzone" tabindex="0">Drop images here, ' +
           'click to choose, or paste (Ctrl/Cmd + V)</div>' +
         '<input type="file" id="shotInput" accept="image/*" multiple hidden>' +
+        '<div class="shotstatus" id="shotStatus"></div>' +
         '<div class="shots" id="shots"></div>' +
+        '<button class="linkbtn" id="skipShots">Skip, build without ' +
+          'screenshots</button>' +
       '</div></div>' +
       '<div class="wstep locked" id="wstep3"><div class="wnum">3</div>' +
         '<div class="wbody">' +
         '<div class="wtitle">Package the build bundle</div>' +
         '<div class="wsub">Zips the deck (.pptx), the data (.xlsx), the logos, ' +
-          'your screenshots, and the prompt into one download.</div>' +
+          'your screenshots, and the prompt (PROMPT.md) into one download. ' +
+          'Add screenshots in step 2, or click Skip, to enable this.</div>' +
         '<button class="briefbtn" id="bundleBtn" disabled>Package and download ' +
           '.zip</button>' +
         '<div class="progress-label" id="bundleLabel"></div>' +
       '</div></div>' +
       '<div class="wstep locked" id="wstep4"><div class="wnum">4</div>' +
         '<div class="wbody">' +
-        '<div class="wtitle">Copy the prompt, build in Claude</div>' +
-        '<div class="wsub">Open Claude with Opus, paste the prompt, and attach ' +
-          'the .zip. Claude unzips it, reviews everything, and returns the ' +
-          'branded deck.</div>' +
-        '<button class="briefbtn" id="wPromptBtn">Copy deck design prompt</button>' +
+        '<div class="wtitle">Build in Claude</div>' +
+        '<div class="wsub">Open Claude (Opus), attach just the one .zip, and ' +
+          'paste the short launch message below. Everything Claude needs, ' +
+          'including the full prompt (PROMPT.md), is inside the zip.</div>' +
+        '<button class="briefbtn" id="wPromptBtn">Copy launch message</button>' +
       '</div></div>' +
     '</div></div>' +
     '<div class="briefwrap" id="briefWrap">' +
@@ -963,8 +980,23 @@ document.getElementById('promptBtn').onclick = function() {
 
 // --- deck builder wizard --------------------------------------------------
 var deckPoll = null;
-var DECK_URLS = [];   // set once the rough deck builds
-var SHOTS = [];       // [{name, b64}] pasted/dropped screenshots
+var DECK_URLS = [];      // set once the rough deck builds
+var SHOTS = [];          // [{name, b64}] pasted/dropped screenshots
+var SKIPPED_SHOTS = false;
+var LAUNCH_MESSAGE = 'Attached is a Demand Gen audit build bundle (a .zip). ' +
+    'Unzip it and follow PROMPT.md exactly to produce the branded Lockhern ' +
+    'Digital deck. Everything you need is inside: the rough deck ' +
+    '(rough-deck.pptx) to redesign, the full data (audit-data.xlsx), the ' +
+    'Lockhern logos, and the settings and audience screenshots to use as the ' +
+    'source of truth. Design it carefully. When you are done, return the new ' +
+    '.pptx.';
+
+// The Package button is enabled only once the deck exists AND the analyst has
+// either added screenshots or chosen to skip them.
+function refreshBundleGate() {
+  var b = document.getElementById('bundleBtn');
+  if (b) b.disabled = !(DECK_URLS.length && (SHOTS.length || SKIPPED_SHOTS));
+}
 
 function deckSetProgress(fraction, label) {
   document.getElementById('deckProg').style.display = 'block';
@@ -1023,8 +1055,8 @@ document.getElementById('deckBtn').onclick = function() {
               (DECK_URLS.length > 1 ? ' ' + (i + 1) : '') + ' →</a>';
         }).join('<br>');
         unlockStep(2); unlockStep(3); unlockStep(4);
-        document.getElementById('bundleBtn').disabled = false;
-        toast('Rough deck ready. Now steps 2 to 4.');
+        refreshBundleGate();
+        toast('Rough deck ready. Add screenshots (step 2) or skip.');
       })
       .withFailureHandler(function(error) {
         finish();
@@ -1050,6 +1082,7 @@ function renderShots() {
   if (!el) return;
   el.innerHTML = SHOTS.map(function(s, i) {
     return '<div class="shot"><img src="' + s.b64 + '" alt="">' +
+        '<span class="shot-ok" title="Added">✓</span>' +
         '<button class="shot-x" data-i="' + i + '" title="Remove">×</button>' +
         '<span class="shot-n">' + esc(s.name) + '</span></div>';
   }).join('');
@@ -1059,6 +1092,16 @@ function renderShots() {
       SHOTS.splice(+this.getAttribute('data-i'), 1); renderShots();
     };
   }
+  var status = document.getElementById('shotStatus');
+  if (status) {
+    status.className = SHOTS.length ? 'shotstatus ok' : 'shotstatus';
+    status.textContent = SHOTS.length
+        ? '✓ ' + SHOTS.length + ' screenshot' + (SHOTS.length === 1 ? '' : 's') +
+          ' added'
+        : '';
+  }
+  if (SHOTS.length) SKIPPED_SHOTS = false;   // adding one un-skips
+  refreshBundleGate();
 }
 (function wireDropzone() {
   var dz = document.getElementById('dropzone');
@@ -1078,6 +1121,18 @@ function renderShots() {
     var files = (e.dataTransfer && e.dataTransfer.files) || [];
     for (var i = 0; i < files.length; i++) addShotFile(files[i]);
   });
+  var skip = document.getElementById('skipShots');
+  if (skip) skip.onclick = function() {
+    SKIPPED_SHOTS = true;
+    var status = document.getElementById('shotStatus');
+    if (status && !SHOTS.length) {
+      status.className = 'shotstatus';
+      status.textContent = 'Skipped. You can still add screenshots before ' +
+          'packaging.';
+    }
+    refreshBundleGate();
+    toast('Screenshots skipped');
+  };
 })();
 document.addEventListener('paste', function(e) {
   var tag = (document.activeElement && document.activeElement.tagName) || '';
@@ -1128,7 +1183,8 @@ document.getElementById('bundleBtn').onclick = function() {
 };
 
 document.getElementById('wPromptBtn').onclick = function() {
-  copyPanel(DATA.deckPrompt, COPY_HINTS.prompt, NEEDS_REFRESH);
+  copyPanel(LAUNCH_MESSAGE, 'Attach the .zip to Claude (Opus) and paste this. ' +
+      'The full prompt is inside the zip as PROMPT.md.', LAUNCH_MESSAGE);
 };
 
 // --- plain-language read-out ---------------------------------------------

@@ -89,8 +89,10 @@ The dashboard header has a four-step **Deck builder**:
    full data (`.xlsx`), the logos, your screenshots, `PROMPT.md`, and a readme.
    Built server-side (`buildBundle`, needs the `presentations` + `drive.readonly`
    scopes) and downloaded in the browser.
-4. **Copy the prompt** → open **Claude (Opus)**, paste it, attach the `.zip`.
-   Claude unzips, reviews everything, and returns the branded deck.
+   Package unlocks only after you add screenshots or click **Skip**.
+4. **Build in Claude** → attach just the one `.zip` and paste the short launch
+   message (the full prompt is inside the zip as `PROMPT.md`). Claude (Opus)
+   unzips, reviews everything, and returns the branded deck.
 
 See `prompts/lockhern-deck.md` for the standalone prompt.
 
