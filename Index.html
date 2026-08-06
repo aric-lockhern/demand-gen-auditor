@@ -476,6 +476,58 @@
     font-weight: 600; color: var(--ink);
   }
   .deckerr { color: var(--down); font-size: 13px; margin-top: 8px; }
+
+  /* --- deck builder wizard --------------------------------------------- */
+  .wizard {
+    display: grid; gap: 12px; max-width: 720px; margin-top: 6px;
+  }
+  .wstep {
+    display: grid; grid-template-columns: 34px 1fr; gap: 14px;
+    background: var(--card); border: 1px solid var(--rule); border-radius: 14px;
+    padding: 16px 18px; box-shadow: var(--lift);
+  }
+  .wstep.locked { opacity: .5; pointer-events: none; }
+  .wstep .wnum {
+    width: 30px; height: 30px; border-radius: 8px; display: flex;
+    align-items: center; justify-content: center; font-weight: 700;
+    color: #fff; background: var(--accent); font-size: 14px;
+  }
+  .wstep .wtitle {
+    font-family: var(--display); font-weight: 600; font-size: 16px;
+    color: var(--ink);
+  }
+  .wstep .wsub {
+    font-size: 13px; color: var(--muted); margin: 3px 0 10px; max-width: 62ch;
+    line-height: 1.5;
+  }
+  .wstep .briefbtn { margin-top: 2px; }
+  .dropzone {
+    border: 1.5px dashed var(--faint); border-radius: 12px; padding: 20px;
+    text-align: center; color: var(--muted); font-size: 13.5px; cursor: pointer;
+    background: var(--wash); transition: border-color .15s, background .15s;
+  }
+  .dropzone:hover, .dropzone:focus, .dropzone.over {
+    border-color: var(--accent); background: #fff; outline: none;
+    color: var(--ink);
+  }
+  .shots {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px; margin-top: 10px;
+  }
+  .shot {
+    position: relative; border: 1px solid var(--rule); border-radius: 9px;
+    overflow: hidden; background: var(--wash);
+  }
+  .shot img { width: 100%; height: 74px; object-fit: cover; display: block; }
+  .shot .shot-x {
+    position: absolute; top: 4px; right: 4px; width: 20px; height: 20px;
+    border: none; border-radius: 50%; background: rgba(14,14,14,.6); color: #fff;
+    font-size: 14px; line-height: 1; cursor: pointer;
+  }
+  .shot .shot-n {
+    display: block; font-size: 10.5px; color: var(--muted); padding: 4px 6px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
   .toast {
     position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
     background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 10px;
@@ -760,14 +812,48 @@ document.getElementById('root').innerHTML =
     '<div class="actionbar">' +
       '<button class="briefbtn" id="briefBtn">Copy analysis brief</button>' +
       '<button class="briefbtn" id="promptBtn">Copy deck design prompt</button>' +
-      '<button class="briefbtn" id="deckBtn">Build slide deck</button>' +
-      '<button class="briefbtn" id="xlsxBtn">Download data (.xlsx)</button>' +
     '</div>' +
-    '<div class="deckwrap" id="deckWrap">' +
-      '<div class="progress"><i id="deckBar"></i></div>' +
-      '<div class="progress-label" id="deckLabel"></div>' +
-      '<div id="deckResult"></div>' +
-    '</div>' +
+    '<div class="deckwrap open" id="deckWrap"><div class="wizard">' +
+      '<div class="wstep" id="wstep1"><div class="wnum">1</div><div class="wbody">' +
+        '<div class="wtitle">Build the rough deck</div>' +
+        '<div class="wsub">Generates the on-brand Google Slides deck from the ' +
+          'audit.</div>' +
+        '<button class="briefbtn" id="deckBtn">Build rough deck</button>' +
+        '<div class="progress" id="deckProg" style="display:none">' +
+          '<i id="deckBar"></i></div>' +
+        '<div class="progress-label" id="deckLabel"></div>' +
+        '<div id="deckResult"></div>' +
+      '</div></div>' +
+      '<div class="wstep locked" id="wstep2"><div class="wnum">2</div>' +
+        '<div class="wbody">' +
+        '<div class="wtitle">Add settings screenshots</div>' +
+        '<div class="wsub">Optional but recommended. Drop or paste screenshots ' +
+          'of each campaign’s settings, the ad-group settings, and the ' +
+          'ad-group audience with its exclusions. Claude treats these as the ' +
+          'source of truth.</div>' +
+        '<div class="dropzone" id="dropzone" tabindex="0">Drop images here, ' +
+          'click to choose, or paste (Ctrl/Cmd + V)</div>' +
+        '<input type="file" id="shotInput" accept="image/*" multiple hidden>' +
+        '<div class="shots" id="shots"></div>' +
+      '</div></div>' +
+      '<div class="wstep locked" id="wstep3"><div class="wnum">3</div>' +
+        '<div class="wbody">' +
+        '<div class="wtitle">Package the build bundle</div>' +
+        '<div class="wsub">Zips the deck (.pptx), the data (.xlsx), the logos, ' +
+          'your screenshots, and the prompt into one download.</div>' +
+        '<button class="briefbtn" id="bundleBtn" disabled>Package and download ' +
+          '.zip</button>' +
+        '<div class="progress-label" id="bundleLabel"></div>' +
+      '</div></div>' +
+      '<div class="wstep locked" id="wstep4"><div class="wnum">4</div>' +
+        '<div class="wbody">' +
+        '<div class="wtitle">Copy the prompt, build in Claude</div>' +
+        '<div class="wsub">Open Claude with Opus, paste the prompt, and attach ' +
+          'the .zip. Claude unzips it, reviews everything, and returns the ' +
+          'branded deck.</div>' +
+        '<button class="briefbtn" id="wPromptBtn">Copy deck design prompt</button>' +
+      '</div></div>' +
+    '</div></div>' +
     '<div class="briefwrap" id="briefWrap">' +
       '<textarea id="briefText" readonly aria-label="Copied text"></textarea>' +
       '<p id="briefHint"></p>' +
@@ -870,47 +956,50 @@ document.getElementById('promptBtn').onclick = function() {
   copyPanel(DATA.deckPrompt, COPY_HINTS.prompt, NEEDS_REFRESH);
 };
 
-// --- deck builder ---------------------------------------------------------
+// --- deck builder wizard --------------------------------------------------
 var deckPoll = null;
+var DECK_URLS = [];   // set once the rough deck builds
+var SHOTS = [];       // [{name, b64}] pasted/dropped screenshots
 
 function deckSetProgress(fraction, label) {
+  document.getElementById('deckProg').style.display = 'block';
   document.getElementById('deckBar').style.width =
       Math.round(Math.max(0, Math.min(1, fraction)) * 100) + '%';
   document.getElementById('deckLabel').textContent = label;
 }
+function unlockStep(n) {
+  var el = document.getElementById('wstep' + n);
+  if (el) el.className = 'wstep';
+}
+function triggerDownload(bytesB64, name, mime) {
+  var bin = atob(bytesB64), len = bin.length, bytes = new Uint8Array(len);
+  for (var i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+  var url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+  var a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(function() { URL.revokeObjectURL(url); a.remove(); }, 1500);
+}
 
 document.getElementById('deckBtn').onclick = function() {
   var button = this;
-  var wrap = document.getElementById('deckWrap');
   var result = document.getElementById('deckResult');
-
   if (typeof google === 'undefined' || !google.script || !google.script.run) {
-    wrap.className = 'deckwrap open';
     result.innerHTML = '<div class="deckerr">Deck building needs the deployed ' +
-        'web app. Open the published URL rather than a local copy of this ' +
-        'file.</div>';
+        'web app. Open the published URL, not a local copy.</div>';
     return;
   }
-
   button.disabled = true;
-  wrap.className = 'deckwrap open';
   result.innerHTML = '';
-  deckSetProgress(0.02, 'Starting\u2026');
-
-  // The build is its own execution, so poll the server for real progress
-  // rather than animating a fake timer.
+  deckSetProgress(0.02, 'Starting…');
   deckPoll = setInterval(function() {
     google.script.run.withSuccessHandler(function(state) {
       if (!state || !state.total || state.done >= state.total) return;
       deckSetProgress(state.done / state.total,
-          state.label + '\u2026 (' + state.done + ' of ' + state.total + ')');
+          state.label + '… (' + state.done + ' of ' + state.total + ')');
     }).deckProgress();
   }, 900);
-
-  function finish() {
-    clearInterval(deckPoll);
-    button.disabled = false;
-  }
+  function finish() { clearInterval(deckPoll); button.disabled = false; }
 
   google.script.run
       .withSuccessHandler(function(response) {
@@ -921,68 +1010,114 @@ document.getElementById('deckBtn').onclick = function() {
               esc((response && response.error) || 'Unknown error') + '</div>';
           return;
         }
-        deckSetProgress(1, 'Deck ready');
-        var links = response.urls.map(function(url, i) {
+        DECK_URLS = response.urls || [];
+        deckSetProgress(1, 'Rough deck ready');
+        result.innerHTML = DECK_URLS.map(function(url, i) {
           return '<a class="decklink" href="' + esc(url) + '" target="_blank" ' +
               'rel="noopener">Open rough deck' +
-              (response.urls.length > 1 ? ' ' + (i + 1) : '') + ' \u2192</a>';
+              (DECK_URLS.length > 1 ? ' ' + (i + 1) : '') + ' →</a>';
         }).join('<br>');
-        result.innerHTML = links +
-          '<div class="nextsteps"><div class="ns-h">Next: turn this into the ' +
-          'branded client deck</div><ol>' +
-          '<li>Open the rough deck above. <b>File &rsaquo; Download &rsaquo; ' +
-          'Microsoft PowerPoint (.pptx)</b>.</li>' +
-          '<li>Click <b>Download data (.xlsx)</b> above to grab the full ' +
-          'dataset.</li>' +
-          '<li>In Google Ads, screenshot each campaign\u2019s settings, the ' +
-          'ad-group settings, and the ad-group audience (showing inclusions and ' +
-          'exclusions).</li>' +
-          '<li>Click <b>Copy deck design prompt</b> above.</li>' +
-          '<li>Open <b>Claude</b> (use Opus for best design). Paste the prompt, ' +
-          'and attach the <b>.pptx</b>, the <b>.xlsx</b>, and your ' +
-          '<b>screenshots</b>. Logos: if you set the Logos Drive folder in ' +
-          'Settings they are already in the deck, otherwise attach them too.</li>' +
-          '<li>Claude will reply with the three summary findings and its design ' +
-          'direction, then build the branded <b>.pptx</b>. Review it and iterate.' +
-          '</li></ol></div>';
-        toast('Rough deck ready');
+        unlockStep(2); unlockStep(3); unlockStep(4);
+        document.getElementById('bundleBtn').disabled = false;
+        toast('Rough deck ready. Now steps 2 to 4.');
       })
       .withFailureHandler(function(error) {
         finish();
         deckSetProgress(1, 'Failed');
         result.innerHTML = '<div class="deckerr">' +
-            esc(error && error.message ? error.message : String(error)) +
-            '</div>';
+            esc(error && error.message ? error.message : String(error)) + '</div>';
       })
       .buildDeckForWeb();
 };
 
-document.getElementById('xlsxBtn').onclick = function() {
-  var button = this;
-  button.disabled = true;
-  toast('Exporting spreadsheet…');
+function addShotFile(file) {
+  if (!file || String(file.type || '').indexOf('image/') !== 0) return;
+  var reader = new FileReader();
+  reader.onload = function() {
+    SHOTS.push({ name: file.name || ('screenshot-' + (SHOTS.length + 1)),
+                 b64: reader.result });
+    renderShots();
+  };
+  reader.readAsDataURL(file);
+}
+function renderShots() {
+  var el = document.getElementById('shots');
+  if (!el) return;
+  el.innerHTML = SHOTS.map(function(s, i) {
+    return '<div class="shot"><img src="' + s.b64 + '" alt="">' +
+        '<button class="shot-x" data-i="' + i + '" title="Remove">×</button>' +
+        '<span class="shot-n">' + esc(s.name) + '</span></div>';
+  }).join('');
+  var xs = el.querySelectorAll('.shot-x');
+  for (var i = 0; i < xs.length; i++) {
+    xs[i].onclick = function() {
+      SHOTS.splice(+this.getAttribute('data-i'), 1); renderShots();
+    };
+  }
+}
+(function wireDropzone() {
+  var dz = document.getElementById('dropzone');
+  var input = document.getElementById('shotInput');
+  if (!dz || !input) return;
+  dz.onclick = function() { input.click(); };
+  input.onchange = function() {
+    for (var i = 0; i < input.files.length; i++) addShotFile(input.files[i]);
+    input.value = '';
+  };
+  dz.addEventListener('dragover', function(e) {
+    e.preventDefault(); dz.className = 'dropzone over';
+  });
+  dz.addEventListener('dragleave', function() { dz.className = 'dropzone'; });
+  dz.addEventListener('drop', function(e) {
+    e.preventDefault(); dz.className = 'dropzone';
+    var files = (e.dataTransfer && e.dataTransfer.files) || [];
+    for (var i = 0; i < files.length; i++) addShotFile(files[i]);
+  });
+})();
+document.addEventListener('paste', function(e) {
+  var tag = (document.activeElement && document.activeElement.tagName) || '';
+  if (tag === 'TEXTAREA' || tag === 'INPUT') return;
+  var items = (e.clipboardData && e.clipboardData.items) || [];
+  var added = false;
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].type && items[i].type.indexOf('image/') === 0) {
+      var f = items[i].getAsFile();
+      if (f) { addShotFile(f); added = true; }
+    }
+  }
+  if (added) { toast('Screenshot added'); unlockStep(2); }
+});
+
+document.getElementById('bundleBtn').onclick = function() {
+  if (!DECK_URLS.length) { toast('Build the rough deck first (step 1)'); return; }
+  var btn = this; btn.disabled = true;
+  var lbl = document.getElementById('bundleLabel');
+  lbl.textContent = 'Packaging deck, data, logos' +
+      (SHOTS.length ? ' and ' + SHOTS.length + ' screenshot(s)' : '') + '…';
   google.script.run
       .withSuccessHandler(function(res) {
-        button.disabled = false;
-        if (!res || !res.ok) { toast((res && res.error) || 'Export failed'); return; }
+        btn.disabled = false;
+        if (!res || !res.ok) {
+          lbl.textContent = ''; toast((res && res.error) || 'Packaging failed');
+          return;
+        }
         try {
-          var bin = atob(res.b64), len = bin.length, bytes = new Uint8Array(len);
-          for (var i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
-          var blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-' +
-              'officedocument.spreadsheetml.sheet' });
-          var url = URL.createObjectURL(blob);
-          var a = document.createElement('a');
-          a.href = url; a.download = res.name || 'audit-data.xlsx';
-          document.body.appendChild(a); a.click();
-          setTimeout(function() { URL.revokeObjectURL(url); a.remove(); }, 1500);
-          toast('Downloaded ' + (res.name || 'data.xlsx'));
-        } catch (e) { toast('Download blocked by the browser'); }
+          triggerDownload(res.b64, res.name || 'bundle.zip', 'application/zip');
+          lbl.textContent = 'Downloaded ' + (res.name || 'bundle.zip') +
+              ' (' + (res.count || '') + ' files). Now step 4.';
+          unlockStep(4);
+          toast('Bundle downloaded');
+        } catch (e) { lbl.textContent = ''; toast('Download blocked by browser'); }
       })
       .withFailureHandler(function(e) {
-        button.disabled = false;
-        toast('Export failed: ' + (e && e.message ? e.message : String(e)));
+        btn.disabled = false; lbl.textContent = '';
+        toast('Packaging failed: ' + (e && e.message ? e.message : String(e)));
       })
-      .exportXlsx();
+      .buildBundle(DECK_URLS, SHOTS);
+};
+
+document.getElementById('wPromptBtn').onclick = function() {
+  copyPanel(DATA.deckPrompt, COPY_HINTS.prompt, NEEDS_REFRESH);
 };
 
 // --- plain-language read-out ---------------------------------------------

@@ -3618,6 +3618,101 @@ function exportXlsx() {
   }
 }
 
+/** Decode a base64 data URI to a named Blob, guessing the extension. */
+function dataUriToBlob_(uri, name) {
+  try {
+    var parts = String(uri || '').split('base64,');
+    if (parts.length < 2) return null;
+    var mime = (parts[0].match(/data:([^;]+)/) || [null, 'application/octet-stream'])[1];
+    var ext = /png/.test(mime) ? '.png' : /jpe?g/.test(mime) ? '.jpg' :
+              /svg/.test(mime) ? '.svg' : /gif/.test(mime) ? '.gif' : '';
+    var fname = /\.\w+$/.test(name) ? name : name + ext;
+    return Utilities.newBlob(Utilities.base64Decode(parts[1]), mime, fname);
+  } catch (e) { return null; }
+}
+
+function bundleReadme_() {
+  return [
+    'Demand Gen audit build bundle',
+    '',
+    'Everything Claude needs to build the branded Lockhern deck is in this zip:',
+    '',
+    '- rough-deck.pptx      the auto-built deck to redesign',
+    '- audit-data.xlsx      the full dataset (all tabs), authoritative',
+    '- PROMPT.md            the deck-design prompt, paste this to Claude',
+    '- logo-*.png           the Lockhern logos to embed',
+    '- screenshot-*.png     settings and audience screenshots, source of truth',
+    '',
+    'How to use it:',
+    '1. Open Claude and use Opus for the best design.',
+    '2. Paste the contents of PROMPT.md.',
+    '3. Attach this whole zip (or its extracted files).',
+    '4. Claude reviews everything and returns the branded .pptx.'
+  ].join('\n');
+}
+
+/**
+ * Package one download with everything the branded rebuild needs: the rough
+ * deck exported to .pptx, the data as .xlsx, the logos, the analyst's
+ * screenshots (sent from the browser as data URIs), the prompt and a readme.
+ * `deckUrls` are the Slides URLs returned by buildDeckForWeb; `screenshots` is
+ * an array of {name, b64}. Returns the zip as base64 for a client download.
+ */
+function buildBundle(deckUrls, screenshots) {
+  try {
+    var token = ScriptApp.getOAuthToken();
+    var files = [];
+
+    (deckUrls || []).forEach(function(u, i) {
+      var m = String(u).match(/\/d\/([a-zA-Z0-9_-]+)/);
+      if (!m) return;
+      var resp = UrlFetchApp.fetch('https://docs.google.com/presentation/d/' +
+          m[1] + '/export/pptx', {
+        headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true
+      });
+      if (resp.getResponseCode() === 200) {
+        files.push(resp.getBlob().setName(
+            (deckUrls.length > 1 ? 'rough-deck-' + (i + 1) : 'rough-deck') +
+            '.pptx'));
+      }
+    });
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (ss) {
+      var xr = UrlFetchApp.fetch('https://docs.google.com/spreadsheets/d/' +
+          ss.getId() + '/export?format=xlsx', {
+        headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true
+      });
+      if (xr.getResponseCode() === 200) {
+        files.push(xr.getBlob().setName('audit-data.xlsx'));
+      }
+    }
+
+    var logos = brandLogos_();
+    [['logo-color', logos.logoColor], ['logo-white', logos.logoWhite],
+     ['logo-mark', logos.logoMark]].forEach(function(p) {
+      var b = p[1] && dataUriToBlob_(p[1], p[0]);
+      if (b) files.push(b);
+    });
+
+    (screenshots || []).forEach(function(sc, i) {
+      var uri = String(sc.b64 || '');
+      if (uri.indexOf('data:') !== 0) uri = 'data:image/png;base64,' + uri;
+      var b = dataUriToBlob_(uri, sc.name || ('screenshot-' + (i + 1)));
+      if (b) files.push(b);
+    });
+
+    files.push(Utilities.newBlob(getDeckPrompt(), 'text/markdown', 'PROMPT.md'));
+    files.push(Utilities.newBlob(bundleReadme_(), 'text/plain', 'README.txt'));
+
+    var zip = Utilities.zip(files, 'Demand Gen audit bundle.zip');
+    return { ok: true, name: 'Demand Gen audit bundle.zip',
+             b64: Utilities.base64Encode(zip.getBytes()), count: files.length };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e).slice(0, 200) };
+  }
+}
+
 function buildDeck() {
   loadSettings_();
   var accounts = cachedAccounts_();
