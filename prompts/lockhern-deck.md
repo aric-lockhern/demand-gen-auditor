@@ -61,9 +61,9 @@ Colours (use as the entire palette; introduce no others):
 
 | Token | Hex | Use |
 |---|---|---|
-| Primary blue | `#317AE0` | Headlines, key figures, chart 1, the single accent that marks what matters |
+| Primary blue | `#317AE0` | Title and closing backgrounds, headlines, key figures, the single accent |
 | Secondary blue | `#2E51C0` | Secondary series, accents |
-| Tertiary navy | `#0E2970` | Title / closing backgrounds, deep fills |
+| Tertiary navy | `#0E2970` | Accents and deep fills |
 | Ink | `#0E0E0E` | Body text |
 | Dark gray | `#6B7A99` | Captions, muted labels |
 | Mid gray | `#BAC3D6` | Rules, gridlines |
@@ -75,16 +75,16 @@ unavailable, substitute a clean serif for titles and a humanist sans for body �
 never default fonts.
 
 Logo: place the Lockhern logo on the title and closing slides (white version on
-the navy background) and a small mark in a consistent corner of content slides.
+the primary blue background) and a small mark in a consistent corner of content slides.
 Embed the provided logo files; do not recreate the logo.
 
-Motif: one navy (`#0E2970`) title slide and closing slide bookending light
+Motif: a primary blue (`#317AE0`) full-bleed title slide and closing slide bookending light
 content slides. Primary blue is the single accent. No stripes, no accent bars
 under titles.
 
 ## Slides, in order
 
-1. **Title** — navy, white logo, account name, window, and the line "Demand Gen
+1. **Title** — full-bleed primary blue, white logo, account name, window, and the line "Demand Gen
    for people who don't like Demand Gen" as the framing.
 2. **Executive summary** — three or four findings, each one line, each carrying
    its number. This is the slide people read.
@@ -106,7 +106,7 @@ under titles.
 9. **Structure** — campaigns, ad groups, audiences, demographics, assets.
 10. **Spend over time.**
 11. **How to read these numbers** — the caveats, kept in full.
-12. **Closing** — navy, logo, and the one recommendation that matters most.
+12. **Closing** — full-bleed primary blue, logo, and the one recommendation that matters most.
 
 ## What to change
 

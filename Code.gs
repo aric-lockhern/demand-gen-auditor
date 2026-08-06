@@ -2636,12 +2636,12 @@ function buildDeckPrompt_(data) {
   push('');
   push('Type: ' + BRAND.titleFont + ' for titles and display, ' + BRAND.bodyFont + ' for body and figures. If unavailable, substitute a clean serif for titles and a humanist sans for body. Never a default font.');
   push('');
-  push('Logo: the Lockhern logo on the title and closing slides, white version on the navy background, and a small mark in a consistent corner of content slides. Logo files are attached. Embed them, do not redraw the logo.');
+  push('Logo: the Lockhern logo on the title and closing slides, white version on the primary blue background, and a small mark in a consistent corner of content slides. Logo files are attached. Embed them, do not redraw the logo.');
   push('');
   push("## Design system. This is where the last version fell short. Follow it.");
   push('');
   push("- Pick one motif and repeat it: a small filled circle holding a number or a simple line icon, beside every section title. Carry it across every slide.");
-  push("- One navy title slide and one navy closing slide bookend light content slides.");
+  push("- The title slide and the closing slide use the primary blue " + BRAND.primary + " as a full-bleed background, with white type and the white logo. They bookend the light content slides. Keep the deep navy " + BRAND.tertiary + " for accents and deep fills, not for these two backgrounds.");
   push("- Give numbers hierarchy. The one or two figures that carry a slide are large, 40 to 72 point. Everything else is small and quiet.");
   push("- Use big stat callouts (a large number with a short label beneath) instead of sentences for key metrics.");
   push("- For settings and account health, use a status treatment: a green, amber, or red dot or check beside each item. Not a full grid of colored cells.");
@@ -2655,7 +2655,7 @@ function buildDeckPrompt_(data) {
   push('');
   push("Adapt the exact count to the content, but keep this spine and these four buckets: settings, structure, video performance, video and content strategy, all tied to the point of view.");
   push('');
-  push('1. TITLE. Navy, white logo, account name, window, and the line: ' + POV.title + '.');
+  push('1. TITLE. Full-bleed primary blue ' + BRAND.primary + ' background, white logo, white type: account name, window, and the line: ' + POV.title + '.');
   push("2. HOW WE JUDGE DEMAND GEN. A visual one-slide framework of our lens. Three pillars, each an icon in a blue circle with a short bold claim and one supporting line: The channel (Demand Gen buys attention on YouTube, a social and creative environment, judge it like social not search), The levers (creative and landing pages move this channel, a standard product page is usually not enough), The signal (we grade attention and mid funnel signal, not last click alone). Then a compact strip of the exact signals we grade on: video completion at 25, 50, 75, 100 percent, view-through, attributed brand search, brand lift, and cost per micro conversion. This slide must feel like a point of view. Do not render it as three columns of body text, which is how the last version failed.");
   push("3. EXECUTIVE SUMMARY. Three findings that matter for THIS account, as large stat callouts, chosen from the findings list below. Do NOT lead with the percent of conversions outside the bidding column, and do NOT use the percent of ads that got an impression: most campaigns were intentionally paused this window, so that number is meaningless. The real headlines here are that creative is unmeasurable because one ad carries every video, that view-through carries most of the attributed action, and the single settings or structure point that matters most.");
   push("4. SETTINGS: WHAT IS ALIGNED, WHAT TO FIX. A core bucket. Show only high-signal settings, each marked aligned, worth a look, or fix, and tie each to the point of view. Prioritize: conversion goals (which actions the campaign optimizes toward, and whether Add to Cart and Begin Checkout are among them), the AI asset enhancements (which are on or off, and which we would change and why), new versus existing customer bidding and whether the existing-customer list is excluded from prospecting, and view-through conversion optimization. Do not show any setting you cannot confirm. If the analyst attached settings screenshots, they are the source of truth here.");
@@ -2665,7 +2665,7 @@ function buildDeckPrompt_(data) {
   push("8. LANDING PAGE AND CONVERSION PATH. A core bucket, and it was missing before. Show where the ads actually drive (the destination URLs are listed in the data below, with the spend behind each). Open and review those pages if you can. Then recommend, specifically for THIS client's business (read the destination pages and the account name to understand what they sell), what a better Demand Gen landing experience would be: Demand Gen buys cold attention, so a standard product page is usually the wrong destination. Recommend a purpose-built page, and state plainly which KPI we should test as the primary conversion for this audience: a quiz, an email or SMS capture, or a direct order. Tie the choice to the funnel stage this traffic is at. Make it a real recommendation, not a platitude.");
   push("9. AUDIENCE STRATEGY, INCLUSIONS AND EXCLUSIONS. Who each ad group targets, and just as important, who it excludes. Call out clearly whether existing customers (past purchasers) are excluded from prospecting: excluding them is correct and worth crediting; failing to exclude them wastes prospecting budget on people who already buy. Use the ad-group audience data below and any audience screenshots the analyst attached as the source of truth, since the API cannot always read the exclusion inside a Demand Gen audience signal. Pair this with the age and gender skew as a visual talking-point slide, not four tables.");
   push("10. CHANNEL AND SURFACE EFFICIENCY. A donut or bar of spend by surface plus efficiency. Drop any surface under about one percent of spend rather than cluttering the slide with it. State the takeaway plainly: where the money goes and where it is most and least efficient, comparing view rate against cost per action. If a surface shows a zero percent view rate, add a small caveat that view rate is not measured for that surface. Do not present zero percent as a real result.");
-  push("11. THE ONE THING. Navy closing slide. The single highest-leverage action stated plainly with why it matters, then a short list of the next moves.");
+  push("11. THE ONE THING. Full-bleed primary blue closing slide, white type and white logo. The single highest-leverage action stated plainly with why it matters, then a short list of the next moves.");
   push('');
   push("Do not include a daily pacing slide, and do not include a separate methodology-notes slide. Fold only the two caveats that matter into small footnotes where they apply: view-through sits outside cost per action and ROAS, and watch depth is blended because the videos share an ad.");
   push('');
@@ -3839,24 +3839,24 @@ function deckForAccount_(data) {
   section('Title', true, function() {
     var first = deck.getSlides()[0];
     first.getPageElements().forEach(function(element) { element.remove(); });
-    // Navy title slide — the brand's dark surface for opening/closing.
+    // Primary-blue title slide, the brand's signature surface for open/close.
     var bg = first.insertShape(SlidesApp.ShapeType.RECTANGLE, 0, 0, W, H);
-    bg.getFill().setSolidFill(T.deep);
+    bg.getFill().setSolidFill(BRAND.primary);
     bg.getBorder().setTransparent();
     bg.sendToBack();
     logo(first, 'white', M, 40, 150, BRAND.white);
     box(first, 'Demand Gen audit', M, 150, W - M * 2, 26, 13, false,
-        BRAND.grayMid);
+        BRAND.grayLight);
     box(first, account.name, M, 176, W - M * 2, 58, 34, true, BRAND.white,
         T.titleFont);
     var line = first.insertShape(SlidesApp.ShapeType.RECTANGLE, M, 242,
         W - M * 2, 1.5);
-    line.getFill().setSolidFill(T.accent);
+    line.getFill().setSolidFill(BRAND.white);
     line.getBorder().setTransparent();
     box(first, account.start + '  to  ' + account.end + '     ·     account ' +
         account.id + '     ·     ' + account.currency,
-        M, 254, W - M * 2, 26, 12, false, BRAND.grayMid);
-    box(first, POV.title, M, H - 46, W - M * 2, 24, 11, false, BRAND.grayMid,
+        M, 254, W - M * 2, 26, 12, false, BRAND.grayLight);
+    box(first, POV.title, M, H - 46, W - M * 2, 24, 11, false, BRAND.grayLight,
         T.titleFont);
   });
 
