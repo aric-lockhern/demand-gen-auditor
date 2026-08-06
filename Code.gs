@@ -1053,10 +1053,13 @@ function pullSurfaces_(dateClause) {
 function pullSettings_() {
   var out = { campaigns: [], conversionActions: [], notes: [] };
 
+  // start_date / end_date are optional, not required: some API versions reject
+  // them ("Unrecognized fields"), and putting them in `required` would sink the
+  // entire settings pull. As optional fields gaql_ sheds exactly those two and
+  // keeps everything else.
   var rows = gaql_('Campaign settings', 'campaign',
       ['campaign.id', 'campaign.name', 'campaign.status',
-       'campaign.bidding_strategy_type', 'campaign.start_date',
-       'campaign.end_date'],
+       'campaign.bidding_strategy_type'],
       [['campaign_budget.amount_micros', 'campaign_budget.delivery_method',
         'campaign_budget.explicitly_shared'],
        ['campaign.asset_automation_settings'],
@@ -1065,7 +1068,8 @@ function pullSettings_() {
        ['campaign.target_cpa.target_cpa_micros'],
        ['campaign.target_roas.target_roas'],
        ['campaign.maximize_conversion_value.target_roas'],
-       ['campaign.maximize_conversions.target_cpa_micros']],
+       ['campaign.maximize_conversions.target_cpa_micros'],
+       ['campaign.start_date', 'campaign.end_date']],
       DGEN);
 
   var byId = {};
