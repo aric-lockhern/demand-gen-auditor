@@ -302,12 +302,12 @@ function applyBrandLogos_() {
 // ============================================================================
 // POV — the strategy this audit argues
 // ============================================================================
-// From the talk "Demand Gen for people who don't like Demand Gen." The whole
-// point of the tool is to land THIS argument in a real account, so the thesis
-// lives as data the analysis prompt, the brief and the deck can all quote
-// verbatim rather than each paraphrasing it differently.
+// The strategy the audit argues, stated professionally for a client-facing
+// deck. (The internal framing this grew out of is deliberately not used here.)
+// It lives as data so the analysis prompt, the brief and the deck all quote it
+// the same way rather than each paraphrasing it differently.
 var POV = {
-  title: "Demand Gen for people who don't like Demand Gen",
+  title: 'A full-funnel, creative-led approach to Demand Gen',
   thesis: 'Demand Gen is a social and creative channel, not a search channel. ' +
       'YouTube is social and should be bought like social: creative and landing ' +
       'pages are the levers, and success shows up first in attention and ' +
@@ -2714,9 +2714,9 @@ function buildDeckPrompt_(data) {
   push("## Lockhern brand system");
   push('');
   push("Use only these colors:");
-  push('- Primary blue ' + BRAND.primary + ': headlines, key figures, the single accent that marks what matters.');
+  push('- Primary blue ' + BRAND.primary + ': the HERO colour. Full-bleed background for the title, closing and any section-divider or statement slides. Also headlines, key figures, and the single accent that marks what matters.');
   push('- Secondary blue ' + BRAND.secondary + ': secondary chart series.');
-  push('- Tertiary navy ' + BRAND.tertiary + ': the title and closing backgrounds, deep fills.');
+  push('- Tertiary navy ' + BRAND.tertiary + ': use sparingly. Small accents and text contrast only. Do NOT use it as a slide background or a large fill; primary blue is the background colour.');
   push('- Ink ' + BRAND.ink + ': body text. Dark gray ' + BRAND.grayDark + ': captions.');
   push('- Mid gray ' + BRAND.grayMid + ': rules and gridlines. Light gray ' + BRAND.grayLight + ': card fills and table banding. White ' + BRAND.white + '.');
   push('- Status accents only where needed: green ' + '#1B7F5A' + ' aligned, amber ' + '#C98A1B' + ' worth a look, red ' + '#C24B3C' + ' fix.');
@@ -2728,7 +2728,7 @@ function buildDeckPrompt_(data) {
   push("## Design system. This is where the last version fell short. Follow it.");
   push('');
   push("- Pick one motif and repeat it: a small filled circle holding a number or a simple line icon, beside every section title. Carry it across every slide.");
-  push("- The title slide and the closing slide use the primary blue " + BRAND.primary + " as a full-bleed background, with white type and the white logo. They bookend the light content slides. Keep the deep navy " + BRAND.tertiary + " for accents and deep fills, not for these two backgrounds.");
+  push("- Primary blue " + BRAND.primary + " is the signature background. Use it full-bleed on the title slide, the closing slide, and any section-divider or statement slide, always with white type and the white logo. Content slides stay light (white or light grey) for readability. Keep tertiary navy " + BRAND.tertiary + " to a minimum: small accents or text contrast, never a background or large fill.");
   push("- Give numbers hierarchy. The one or two figures that carry a slide are large, 40 to 72 point. Everything else is small and quiet.");
   push("- Use big stat callouts (a large number with a short label beneath) instead of sentences for key metrics.");
   push("- For settings and account health, use a status treatment: a green, amber, or red dot or check beside each item. Not a full grid of colored cells.");
@@ -4488,7 +4488,7 @@ function deckForAccount_(data) {
         false, T.muted);
     var y = 110;
     [['Full colour', BRAND.logoColor, BRAND.white],
-     ['White (for blue slides)', BRAND.logoWhite, BRAND.tertiary],
+     ['White (for blue slides)', BRAND.logoWhite, BRAND.primary],
      ['Monogram', BRAND.logoMark, BRAND.white]].forEach(function(row) {
       if (!row[1]) return;
       var swatch = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, M, y - 6,

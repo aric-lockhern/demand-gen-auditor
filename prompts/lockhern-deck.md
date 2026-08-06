@@ -29,7 +29,7 @@ says**, and **with our point of view on it**.
 
 ## Our point of view — carry this argument through the deck
 
-The deck argues a thesis: **Demand Gen for people who don't like Demand Gen.**
+The deck argues a thesis: **a full-funnel, creative-led approach to Demand Gen.**
 
 Demand Gen is a **social and creative channel, not a search channel.** YouTube is
 social and should be bought like social: creative and landing pages are the
@@ -61,9 +61,9 @@ Colours (use as the entire palette; introduce no others):
 
 | Token | Hex | Use |
 |---|---|---|
-| Primary blue | `#317AE0` | Title and closing backgrounds, headlines, key figures, the single accent |
+| Primary blue | `#317AE0` | The hero colour: full-bleed background for the title, closing and any section-divider slides, plus headlines, key figures and the single accent |
 | Secondary blue | `#2E51C0` | Secondary series, accents |
-| Tertiary navy | `#0E2970` | Accents and deep fills |
+| Tertiary navy | `#0E2970` | Use sparingly: small accents and text contrast only. Not a background or a large fill. |
 | Ink | `#0E0E0E` | Body text |
 | Dark gray | `#6B7A99` | Captions, muted labels |
 | Mid gray | `#BAC3D6` | Rules, gridlines |
@@ -78,14 +78,11 @@ Logo: place the Lockhern logo on the title and closing slides (white version on
 the primary blue background) and a small mark in a consistent corner of content slides.
 Embed the provided logo files; do not recreate the logo.
 
-Motif: a primary blue (`#317AE0`) full-bleed title slide and closing slide bookending light
-content slides. Primary blue is the single accent. No stripes, no accent bars
-under titles.
+Motif: primary blue (`#317AE0`) is the signature colour. Use it full-bleed on the title, closing and any section-divider slides; content slides stay light for readability. Primary blue is the single accent. Keep tertiary navy to a minimum. No stripes, no accent bars under titles.
 
 ## Slides, in order
 
-1. **Title** — full-bleed primary blue, white logo, account name, window, and the line "Demand Gen
-   for people who don't like Demand Gen" as the framing.
+1. **Title** — full-bleed primary blue, white logo, account name, window, and the line "A full-funnel, creative-led approach to Demand Gen" as the framing.
 2. **Executive summary** — three or four findings, each one line, each carrying
    its number. This is the slide people read.
 3. **How we judge Demand Gen** — a short POV slide stating the lens (social not
