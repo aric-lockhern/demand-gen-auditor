@@ -573,6 +573,7 @@ function auditAccount_(customerId) {
   var assetUrls = attachCreatives_(data.ads);
   backfillVideoIdentity_(data.videos, assetUrls);
   data.creativePacking = packingOf_(data.ads);
+  data.landingPages = landingPagesOf_(data.ads);
   backfillVideoQuartiles_(data.videos, data.ads);
   attachVideoConversions_(data.videos, data.ads, range.current);
   data.totals = rollup_(data.campaigns);
@@ -906,6 +907,39 @@ function pullAds_(dateClause) {
     return out;
   });
   return tally_('ads', mapped);
+}
+
+/**
+ * Where the ads actually drive. Demand Gen lives or dies on the landing page,
+ * so we roll every ad's final URL up into destinations with the spend, actions
+ * and view-through behind each. The deck audits these pages and recommends a
+ * purpose-built Demand Gen experience.
+ */
+function landingPagesOf_(ads) {
+  var byUrl = {};
+  (ads || []).forEach(function(ad) {
+    var url = ad.finalUrl || '';
+    if (!url) return;
+    var lp = byUrl[url] || (byUrl[url] = {
+      url: url, spend: 0, conversions: 0, viewThrough: 0, impressions: 0,
+      clicks: 0, ads: 0, campaigns: {}
+    });
+    lp.spend += ad.cost || 0;
+    lp.conversions += ad.conversions || 0;
+    lp.viewThrough += ad.viewThrough || 0;
+    lp.impressions += ad.impressions || 0;
+    lp.clicks += ad.clicks || 0;
+    lp.ads += 1;
+    if (ad.campaign) lp.campaigns[ad.campaign] = true;
+  });
+  return Object.keys(byUrl).map(function(u) {
+    var lp = byUrl[u];
+    lp.campaignList = Object.keys(lp.campaigns);
+    delete lp.campaigns;
+    lp.cpa = lp.conversions ? lp.spend / lp.conversions : 0;
+    lp.cvr = lp.clicks ? lp.conversions / lp.clicks : 0;
+    return lp;
+  }).sort(function(a, b) { return b.spend - a.spend; });
 }
 
 function pullAdChannels_(dateClause) {
@@ -2566,10 +2600,14 @@ function buildDeckPrompt_(data) {
   push('   number) and one supporting line. No label titles like "Audiences".');
   push('4. Connect the point of view to specific settings and structure. The');
   push('   reader should always see WHY a finding matters through our lens.');
-  push('5. Treat any settings screenshots or pasted settings the analyst attached');
-  push('   to this conversation as the AUTHORITATIVE source. Where they conflict');
-  push('   with a value in the rough deck or below, trust the screenshot and');
-  push('   correct the number. This is how we fix settings the API cannot read.');
+  push('5. Treat any settings, campaign, or ad-group screenshots or pasted text');
+  push('   the analyst attached to this conversation as the AUTHORITATIVE source.');
+  push('   Where they conflict with a value in the rough deck or below, trust the');
+  push('   screenshot and correct the number. This is how we fix settings the API');
+  push('   cannot read. Pay special attention to ad-group AUDIENCE screenshots:');
+  push('   the API often cannot see the exclusion inside a Demand Gen audience');
+  push('   signal, so if a screenshot shows the audience and its exclusions (for');
+  push('   example excluding past purchasers), use that as truth for slide 9.');
   push('');
 
   push('## Our point of view. Carry this argument through the whole deck.');
@@ -2623,10 +2661,11 @@ function buildDeckPrompt_(data) {
   push("4. SETTINGS: WHAT IS ALIGNED, WHAT TO FIX. A core bucket. Show only high-signal settings, each marked aligned, worth a look, or fix, and tie each to the point of view. Prioritize: conversion goals (which actions the campaign optimizes toward, and whether Add to Cart and Begin Checkout are among them), the AI asset enhancements (which are on or off, and which we would change and why), new versus existing customer bidding and whether the existing-customer list is excluded from prospecting, and view-through conversion optimization. Do not show any setting you cannot confirm. If the analyst attached settings screenshots, they are the source of truth here.");
   push("5. CAMPAIGN STRUCTURE. Frame it correctly. Campaigns paused in this window are intentional and seasonal, not broken, so never call a paused campaign a failure or imply the account is mostly dead. The real structural finding is creative packing: one ad carries several videos, so Google reports a single blended completion rate and no individual video can be measured. Make that the headline. Show live versus paused simply, as context, not as the story.");
   push("6. VIDEO PERFORMANCE. The one-page creative scorecard, a thumbnail per creative, all on one slide. Columns: source, impressions, cost, view rate, the 25 / 50 / 75 / 100 completion funnel, conversions, view-through, cost per conversion, and cost per conversion including view-through. Keep the title and subline close. Add one takeaway line: which creative is most efficient and which holds attention. Where watch depth is blank, add a small footnote saying it is blended because the videos share one ad.");
-  push("7. VIDEO AND CONTENT STRATEGY. Our creative recommendations through the lens, specific to what the scorecard shows: split every ad to one video each to recover per-creative measurement, build purpose-made landing pages rather than the standard product page, seed audiences from watch behavior and top organic and Meta content, and review the AI shortened and enhanced cuts against the originals. Make it concrete and prioritized, not generic.");
-  push("8. CHANNEL AND SURFACE EFFICIENCY. A donut or bar of spend by surface plus efficiency. Drop any surface under about one percent of spend rather than cluttering the slide with it. State the takeaway plainly: where the money goes and where it is most and least efficient, comparing view rate against cost per action. If a surface shows a zero percent view rate, add a small caveat that view rate is not measured for that surface. Do not present zero percent as a real result.");
-  push("9. AUDIENCE AND DEMOGRAPHICS. A visual talking-point slide, not four tables. The audiences that carry conversions and the age and gender skew, shown as bars or callouts, with one or two sentences on what it means for targeting.");
-  push("10. THE ONE THING. Navy closing slide. The single highest-leverage action stated plainly with why it matters, then a short list of the next moves.");
+  push("7. VIDEO AND CONTENT STRATEGY. Our creative recommendations through the lens, specific to what the scorecard shows: split every ad to one video each to recover per-creative measurement, seed audiences from watch behavior and top organic and Meta content, and review the AI shortened and enhanced cuts against the originals. Make it concrete and prioritized, not generic.");
+  push("8. LANDING PAGE AND CONVERSION PATH. A core bucket, and it was missing before. Show where the ads actually drive (the destination URLs are listed in the data below, with the spend behind each). Open and review those pages if you can. Then recommend, specifically for THIS client's business (read the destination pages and the account name to understand what they sell), what a better Demand Gen landing experience would be: Demand Gen buys cold attention, so a standard product page is usually the wrong destination. Recommend a purpose-built page, and state plainly which KPI we should test as the primary conversion for this audience: a quiz, an email or SMS capture, or a direct order. Tie the choice to the funnel stage this traffic is at. Make it a real recommendation, not a platitude.");
+  push("9. AUDIENCE STRATEGY, INCLUSIONS AND EXCLUSIONS. Who each ad group targets, and just as important, who it excludes. Call out clearly whether existing customers (past purchasers) are excluded from prospecting: excluding them is correct and worth crediting; failing to exclude them wastes prospecting budget on people who already buy. Use the ad-group audience data below and any audience screenshots the analyst attached as the source of truth, since the API cannot always read the exclusion inside a Demand Gen audience signal. Pair this with the age and gender skew as a visual talking-point slide, not four tables.");
+  push("10. CHANNEL AND SURFACE EFFICIENCY. A donut or bar of spend by surface plus efficiency. Drop any surface under about one percent of spend rather than cluttering the slide with it. State the takeaway plainly: where the money goes and where it is most and least efficient, comparing view rate against cost per action. If a surface shows a zero percent view rate, add a small caveat that view rate is not measured for that surface. Do not present zero percent as a real result.");
+  push("11. THE ONE THING. Navy closing slide. The single highest-leverage action stated plainly with why it matters, then a short list of the next moves.");
   push('');
   push("Do not include a daily pacing slide, and do not include a separate methodology-notes slide. Fold only the two caveats that matter into small footnotes where they apply: view-through sits outside cost per action and ROAS, and watch depth is blended because the videos share an ad.");
   push('');
@@ -2679,6 +2718,20 @@ function buildDeckPrompt_(data) {
     var stot = data.surfaceMix.reduce(function(s, r) { return s + (r.cost || 0); }, 0);
     data.surfaceMix.forEach(function(r) {
       push('- ' + r.surface + ': ' + money0(r.cost) + ', ' + pct0(stot ? r.cost / stot : 0) + ' of spend, ' + (Number(r.conversions) || 0).toFixed(0) + ' conv, ' + (r.conversions ? money0(r.cpa) : 'n/a') + ' CPA, ' + pct1(r.viewRate) + ' view rate.');
+    });
+    push('');
+  }
+  if ((data.landingPages || []).length) {
+    push('Landing pages, where the ads drive (destination, spend, conversions, cost per conversion, ads pointing there). Review these pages for slide 8:');
+    data.landingPages.slice(0, 12).forEach(function(lp) {
+      push('- ' + lp.url + ' : ' + money0(lp.spend) + ' spend, ' + (Number(lp.conversions) || 0).toFixed(0) + ' conv, ' + (lp.conversions ? money0(lp.cpa) : 'n/a') + ' CPA, ' + lp.ads + ' ad(s).');
+    });
+    push('');
+  }
+  if ((data.adGroupSettings || []).length) {
+    push('Ad-group audience targeting and exclusions (API view; a screenshot may show more inside a Demand Gen signal). "excludes" is who is kept out, which is the important prospecting signal:');
+    data.adGroupSettings.slice(0, 12).forEach(function(ag) {
+      push('- ' + ag.adGroup + ' [' + (ag.status || '') + ']: lists targeted ' + ((ag.audiences || []).join(', ') || 'none read') + '; excludes ' + ((ag.excludedAudiences || []).join(', ') || 'none read') + '.');
     });
     push('');
   }
@@ -3250,6 +3303,26 @@ function buildBrief_(data) {
                 (ag.audiences || []).join('; ') || 'None',
                 (ag.excludedAudiences || []).join('; ') || 'None'];
       }));
+    push('Note: the API often cannot read the exclusion inside a Demand Gen ' +
+         'audience signal. Whether existing customers (past purchasers) are ' +
+         'excluded is a key prospecting signal and may need an ad-group ' +
+         'audience screenshot to confirm.');
+    push('');
+  }
+
+  if ((data.landingPages || []).length) {
+    push('## Landing pages (where the ads drive)');
+    push('');
+    push('Demand Gen buys cold attention, so the destination matters. A standard ' +
+         'product page is usually the wrong landing experience. Assess whether ' +
+         'these are purpose-built and what primary KPI (quiz, email/SMS capture, ' +
+         'or direct order) the page should test.');
+    push('');
+    table(['Destination', 'Spend', 'Conversions', 'Cost per conv', 'Ads'],
+      data.landingPages.slice(0, 15).map(function(lp) {
+        return [lp.url, n(lp.spend, 0), n(lp.conversions, 0),
+                lp.conversions ? n(lp.cpa, 2) : 'n/a', String(lp.ads)];
+      }));
   }
 
   if ((settings || {}).conversionActions && settings.conversionActions.length) {
@@ -3352,7 +3425,8 @@ var DECK = {
     // creative = the single one-page scorecard. creativeDetail = the optional
     // per-video appendix (one slide each), off by default so the client deck
     // stays tight. Flip it on for an internal deep-dive.
-    creative: true, creativeDetail: false, adGroupSettings: true
+    creative: true, creativeDetail: false, adGroupSettings: true,
+    landingPages: true
   },
   THEME: {
     ink: BRAND.ink,
@@ -3957,6 +4031,19 @@ function deckForAccount_(data) {
       }));
   });
 
+  // --- landing pages -------------------------------------------------------
+  section('Landing pages', false, function() {
+    var lps = data.landingPages || [];
+    if (!lps.length) return;
+    tableSlide('landingPages', 'Where the ads drive',
+      ['Destination', 'Spend', 'Conv', 'Per action', 'Ads'],
+      lps.map(function(lp) {
+        return [String(lp.url).replace(/^https?:\/\//, '').slice(0, 48),
+                fmtMoney(lp.spend), dec(lp.conversions),
+                lp.conversions ? fmtMoney(lp.cpa) : '—', String(lp.ads)];
+      }));
+  });
+
   // --- settings ------------------------------------------------------------
   // One comprehensive settings slide per campaign: every Demand Gen setting the
   // API exposes — bidding + target, budget, conversion goals, new-vs-existing,
@@ -4376,6 +4463,7 @@ function savePayload_(data) {
     counts: data.counts || {},
     settings: data.settings || null,
     adGroupSettings: data.adGroupSettings || [],
+    landingPages: data.landingPages || [],
     creativePacking: data.creativePacking || null,
     readout: data.readout || null,
     deckPrompt: buildDeckPrompt_(data),

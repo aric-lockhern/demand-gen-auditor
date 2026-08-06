@@ -1452,11 +1452,13 @@ function drawSettings() {
   var gt = ovrGet('settingsGroundTruth');
   out += '<div class="gtbox"><div class="rb-title">Ground truth: paste or ' +
     'screenshot your settings</div><div class="rb-sub">The API can’t read every ' +
-    'Demand Gen setting, and sometimes reads one wrong (e.g. conversion goals). ' +
-    'Paste the campaign and ad-group settings copied from Google Ads here, or ' +
-    'when you build the deck just drag the settings screenshots into the Claude ' +
-    'chat. Either one overrides the audit and flows into the deck as the source ' +
-    'of truth.</div><textarea class="gt-paste" data-key="settingsGroundTruth" ' +
+    'Demand Gen setting, and sometimes reads one wrong (e.g. conversion goals), ' +
+    'and it usually can’t see the exclusion inside an ad-group audience signal ' +
+    '(such as excluding past purchasers). Paste the campaign and ad-group ' +
+    'settings, and the ad-group audience with its exclusions, copied from Google ' +
+    'Ads here. Or when you build the deck, just drag those screenshots into the ' +
+    'Claude chat. Either one overrides the audit and flows into the deck as the ' +
+    'source of truth.</div><textarea class="gt-paste" data-key="settingsGroundTruth" ' +
     'data-state="st-gt" placeholder="Paste settings copied from Google Ads…">' +
     esc(gt) + '</textarea><span class="ovr-state" id="st-gt"></span></div>';
 
@@ -1616,6 +1618,34 @@ function adGroupSection() {
         byCampaign[c].map(adGroupCard).join('') + '</div>';
   });
   return html + '</div>';
+}
+
+/** Landing pages: where the ads drive, with spend and efficiency. */
+function drawLandingPages() {
+  var rows = DATA.landingPages || [];
+  document.getElementById('count').textContent = rows.length + ' destinations';
+  if (!rows.length) {
+    return '<div class="scroll"><div class="empty">No landing pages returned. ' +
+        'Run refresh to pull them.</div></div>';
+  }
+  return '<div class="rb-sub" style="margin:0 0 12px">Where the ads drive. ' +
+    'Demand Gen buys cold attention, so a standard product page is usually the ' +
+    'wrong destination. Consider a purpose-built page, and which primary KPI to ' +
+    'test for this audience: a quiz, an email or SMS capture, or a direct order.' +
+    '</div><div class="scroll"><table><thead><tr><th>Destination</th>' +
+    '<th>Spend</th><th>Conv</th><th>Cost per conv</th><th>CVR</th><th>Ads</th>' +
+    '<th>Campaigns</th></tr></thead><tbody>' +
+    rows.map(function(lp) {
+      var short = String(lp.url).replace(/^https?:\/\//, '');
+      return '<tr><td class="name"><a href="' + esc(lp.url) + '" target="_blank" ' +
+        'rel="noopener">' + esc(short) + '</a></td>' +
+        '<td class="num">' + money(lp.spend) + '</td>' +
+        '<td class="num">' + dec(lp.conversions) + '</td>' +
+        '<td class="num">' + (lp.conversions ? money(lp.cpa) : '—') + '</td>' +
+        '<td class="num">' + pct(lp.cvr) + '</td>' +
+        '<td class="num">' + lp.ads + '</td>' +
+        '<td class="num">' + (lp.campaignList || []).length + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
 }
 
 /** Conversion actions: rolled up first, then the campaign-level detail. */
@@ -1797,6 +1827,8 @@ var VIEWS = {
     rows: function() { return DATA.videos || []; } },
   surfaces: { label: 'Surfaces', custom: true,
     rows: function() { return DATA.surfaceMix || []; } },
+  landingPages: { label: 'Landing pages', custom: true,
+    rows: function() { return DATA.landingPages || []; } },
   settings: { label: 'Settings', custom: true,
     rows: function() { return ((DATA.settings || {}).campaigns) || []; } },
   conversions: { label: 'Conversions', custom: true,
@@ -1884,7 +1916,7 @@ var SORT = { key: 'cost', asc: false };
 var GROUPS = [
   { label: 'Deck', views: ['story'] },
   { label: 'Creative', views: ['videos', 'ads', 'assets'] },
-  { label: 'Placement', views: ['surfaces', 'placements'] },
+  { label: 'Placement', views: ['surfaces', 'landingPages', 'placements'] },
   { label: 'Audience', views: ['audiences', 'demographics'] },
   { label: 'Structure', views: ['campaigns', 'adGroups', 'settings'] },
   { label: 'Outcomes', views: ['conversions', 'daily'] }
@@ -1956,7 +1988,7 @@ function buildToolbar() {
   if (ACTIVE === 'story') { bar.innerHTML = ''; return; }
 
   // Surfaces has no name search; it has a metric selector driving the donuts.
-  if (ACTIVE === 'settings') {
+  if (ACTIVE === 'settings' || ACTIVE === 'landingPages') {
     bar.innerHTML = '<span class="count" id="count"></span>';
     return;
   }
@@ -2183,6 +2215,11 @@ function render() {
   if (ACTIVE === 'settings') {
     panel.innerHTML = drawSettings();
     bindSettings();
+    return;
+  }
+
+  if (ACTIVE === 'landingPages') {
+    panel.innerHTML = drawLandingPages();
     return;
   }
 
