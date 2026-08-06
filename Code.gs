@@ -3680,7 +3680,11 @@ function buildBundle(deckUrls, screenshots) {
           '.pptx';
       var urls = ['https://docs.google.com/presentation/d/' + m[1] + '/export/pptx',
                   'https://docs.google.com/presentation/d/' + m[1] +
-                      '/export?format=pptx'];
+                      '/export?format=pptx',
+                  'https://www.googleapis.com/drive/v3/files/' + m[1] +
+                      '/export?mimeType=' + encodeURIComponent(
+                      'application/vnd.openxmlformats-officedocument.' +
+                      'presentationml.presentation')];
       var done = false, code = 0;
       for (var k = 0; k < urls.length && !done; k++) {
         var resp = UrlFetchApp.fetch(urls[k], {
@@ -3743,6 +3747,76 @@ function buildBundle(deckUrls, screenshots) {
   } catch (e) {
     return { ok: false, error: String(e.message || e).slice(0, 200) };
   }
+}
+
+/**
+ * Run this from the Apps Script editor (Run menu) to see exactly why the deck
+ * .pptx or the logos are missing from the bundle. Running it here forces the
+ * consent screen, so it also grants any newly added scopes. Read the result in
+ * Executions / the returned string, then paste it back if anything failed.
+ */
+function diagnoseBundle() {
+  var out = [];
+  function L(s) { out.push(s); }
+  L('=== Bundle diagnostic ===');
+  var token = '';
+  try { token = ScriptApp.getOAuthToken(); L('OAuth token: ' + (token ? 'ok' : 'missing')); }
+  catch (e) { L('OAuth token ERROR: ' + e); }
+
+  // --- logos ---
+  try {
+    var fid = driveId_(readSetting_('logos drive folder id', '') || DEFAULT_LOGO_FOLDER);
+    L('Logo folder id: ' + fid);
+    var folder = DriveApp.getFolderById(fid);
+    L('Folder name: ' + folder.getName());
+    var it = folder.getFiles(), n = 0;
+    while (it.hasNext()) {
+      var f = it.next(); n++;
+      L('  file: ' + f.getName() + '  (' + f.getMimeType() + ')');
+    }
+    L('Image/other files in folder: ' + n);
+    LOGO_CACHE_ = null;
+    var lg = brandLogos_();
+    L('Resolved logos -> color:' + (!!lg.logoColor) + ' white:' +
+        (!!lg.logoWhite) + ' mark:' + (!!lg.logoMark));
+  } catch (e) { L('LOGO ERROR: ' + e); }
+
+  // --- sheet export (known-good path for comparison) ---
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var xr = UrlFetchApp.fetch('https://docs.google.com/spreadsheets/d/' +
+        ss.getId() + '/export?format=xlsx',
+        { headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true });
+    L('Sheet export: HTTP ' + xr.getResponseCode() + ', type ' +
+        (xr.getHeaders()['Content-Type'] || '') + ', bytes ' +
+        xr.getBlob().getBytes().length);
+  } catch (e) { L('SHEET EXPORT ERROR: ' + e); }
+
+  // --- slides export (creates a throwaway deck, leaves it in Drive to delete) ---
+  try {
+    var test = SlidesApp.create('__lockhern export test (safe to delete)__');
+    Utilities.sleep(1500);
+    var id = test.getId();
+    var tries = [
+      ['docs /export/pptx', 'https://docs.google.com/presentation/d/' + id + '/export/pptx'],
+      ['drive api export', 'https://www.googleapis.com/drive/v3/files/' + id +
+        '/export?mimeType=' + encodeURIComponent('application/vnd.openxmlformats-' +
+        'officedocument.presentationml.presentation')]
+    ];
+    tries.forEach(function(t) {
+      var r = UrlFetchApp.fetch(t[1],
+          { headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true });
+      L('Slides export [' + t[0] + ']: HTTP ' + r.getResponseCode() + ', type ' +
+          (r.getHeaders()['Content-Type'] || '') + ', bytes ' +
+          r.getBlob().getBytes().length);
+    });
+    L('Delete this test deck: ' + test.getUrl());
+  } catch (e) { L('SLIDES EXPORT ERROR: ' + e); }
+
+  L('=== end ===');
+  var text = out.join('\n');
+  Logger.log(text);
+  return text;
 }
 
 function buildDeck() {
