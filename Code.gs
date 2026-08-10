@@ -3472,6 +3472,80 @@ function ensureAccountContext_(customerId) {
 }
 
 /**
+ * Definitive access diagnosis for a 403. Run it from the editor (Run menu) with
+ * no argument to test the first cached account, or pass a customer id. It shows
+ * which customers the OAuth identity + developer token can reach directly, and
+ * tries a minimal query both without and with the manager header, so the real
+ * cause is obvious. Also callable from the dashboard.
+ */
+function diagnoseAccess(customerId) {
+  var out = [];
+  function L(s) { out.push(s); }
+  try {
+    var id = ensureAccountContext_(customerId ||
+        (cachedAccounts_()[0] || {}).id || '');
+    L('=== Access diagnostic ===');
+    L('Target customer: ' + formatId_(id));
+    L('Developer token: ' + (CONFIG.DEVELOPER_TOKEN ? 'set' : 'MISSING'));
+    L('Manager id (login-customer-id) configured: ' +
+        (CONFIG.LOGIN_CUSTOMER_ID ? digits_(CONFIG.LOGIN_CUSTOMER_ID) : '(none)'));
+    var token = ScriptApp.getOAuthToken();
+
+    // Which customers can this OAuth user + developer token reach directly?
+    var accResp = UrlFetchApp.fetch('https://googleads.googleapis.com/' +
+        CONFIG.API_VERSION + '/customers:listAccessibleCustomers', {
+      headers: { Authorization: 'Bearer ' + token,
+                 'developer-token': CONFIG.DEVELOPER_TOKEN },
+      muteHttpExceptions: true });
+    L('listAccessibleCustomers: HTTP ' + accResp.getResponseCode());
+    var names = [];
+    try { names = JSON.parse(accResp.getContentText()).resourceNames || []; }
+    catch (e) {}
+    if (accResp.getResponseCode() === 200) {
+      L('Directly accessible to this token: ' +
+          (names.map(function(n) { return formatId_(n.split('/').pop()); })
+              .join(', ') || '(none)'));
+      L('Target directly accessible: ' +
+          (names.indexOf('customers/' + id) !== -1 ? 'YES' : 'NO'));
+    } else {
+      L('  raw: ' + accResp.getContentText().slice(0, 300));
+    }
+
+    // Minimal query, without then with the manager header.
+    function tryQuery(useLogin) {
+      var headers = { Authorization: 'Bearer ' + token,
+                      'developer-token': CONFIG.DEVELOPER_TOKEN };
+      if (useLogin && CONFIG.LOGIN_CUSTOMER_ID) {
+        headers['login-customer-id'] = digits_(CONFIG.LOGIN_CUSTOMER_ID);
+      }
+      var r = UrlFetchApp.fetch('https://googleads.googleapis.com/' +
+          CONFIG.API_VERSION + '/customers/' + id + '/googleAds:search', {
+        method: 'post', contentType: 'application/json', headers: headers,
+        payload: JSON.stringify({
+          query: 'SELECT customer.id FROM customer LIMIT 1' }),
+        muteHttpExceptions: true });
+      return 'HTTP ' + r.getResponseCode() + (r.getResponseCode() === 200
+          ? ' OK' : ' — ' + r.getContentText().slice(0, 220));
+    }
+    L('Query WITHOUT manager header: ' + tryQuery(false));
+    L('Query WITH manager header:    ' + tryQuery(true));
+    L('');
+    L('Read it like this: if "Target directly accessible" is YES and the query ' +
+      'WITHOUT the manager header is 200, clear the Manager (MCC) id so the tool ' +
+      'stops sending it. If the target is NOT in the accessible list, the ' +
+      'developer token + the deploying Google identity cannot reach this ' +
+      'account, which personal UI access does not fix: link it to the manager ' +
+      'that owns the developer token, or deploy the web app as a Google user ' +
+      'who has access.');
+  } catch (e) {
+    L('ERROR: ' + (e.message || e));
+  }
+  var text = out.join('\n');
+  Logger.log(text);
+  return text;
+}
+
+/**
  * Every campaign in the account (NOT Demand-Gen filtered) with its channel and
  * spend over the reporting window, for the brand-benchmark picker. Client-
  * callable from the dashboard. Returns { ok, campaigns:[{id,name,status,
