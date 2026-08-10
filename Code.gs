@@ -438,6 +438,12 @@ function setup() {
      'upload them. Defaults to the Lockhern 2023 Logos folder. Name one file ' +
      'with "white" (for the blue title/closing slides); the rest is the ' +
      'full-colour logo. The folder must be owned by or shared with this account.'],
+    ['Template deck Drive ID', '',
+     'Optional. Drive ID or share URL of the FINAL reference deck (the 12-slide ' +
+     'house format). When set, the build bundle includes it as ' +
+     'template-reference.pptx and the deck prompt tells Claude to match it slide ' +
+     'for slide. Works for an uploaded .pptx or a Google Slides file. Must be ' +
+     'owned by or shared with this account.'],
     ['Google Ads API version', 'v25', 'Bump when a version sunsets.']
   ];
 
@@ -590,6 +596,24 @@ function readSetting_(key, fallback) {
     // Fall through to the default.
   }
   return fallback;
+}
+
+/** Reads one Settings value as its raw string (not coerced to boolean). */
+function readSettingRaw_(key) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss && ss.getSheetByName(SETTINGS_SHEET);
+    if (!sheet || sheet.getLastRow() < 2) return '';
+    var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
+    for (var i = 0; i < values.length; i++) {
+      if (String(values[i][0]).trim().toLowerCase() === key) {
+        return String(values[i][1] == null ? '' : values[i][1]).trim();
+      }
+    }
+  } catch (e) {
+    // Fall through to empty.
+  }
+  return '';
 }
 
 /** Pulls every listed account, writes the Sheet, and caches each payload. */
@@ -2671,6 +2695,18 @@ function buildDeckPrompt_(data) {
   push('and the point of view. Use a strong model for this (Opus). Do not just');
   push('reformat the rough deck. Rebuild it as a designed, visual document.');
   push('');
+  push('IMPORTANT: this deck has a FIXED house format. A finished reference deck');
+  push('is attached as template-reference.pptx. It is the exact 12-slide layout,');
+  push('typography, colour use, and slide-by-slide structure every audit must');
+  push('match. Open it first. Reproduce its format slide for slide: the same 12');
+  push('slides in the same order, the same bucket labels, the same title-plus-');
+  push('one-line pattern, the same kinds of visual (stat callouts, status tables,');
+  push('the creative scorecard, the age charts, the two closing statement slides).');
+  push('Only the CONTENT changes to this account, never the structure. When this');
+  push('prompt and the reference deck describe the same slide, the reference deck');
+  push('wins on layout and the numbers below win on data. Produce exactly 12');
+  push('slides unless a slide genuinely has no data for this account.');
+  push('');
   push('## Account');
   push('');
   push('- Account: ' + a.name + ' (' + a.id + ')');
@@ -2743,23 +2779,24 @@ function buildDeckPrompt_(data) {
   push("- Simple line icons in a brand-blue circle beside section headers. No stock photos, no clip art, no decorative shapes that carry no information.");
   push("- Canvas 13.3 by 7.5 inches. Left align body copy. Center only the title slide.");
   push('');
-  push("## The narrative. Build these slides, in this order.");
+  push("## The locked 12-slide format. Build exactly these, in this order.");
   push('');
-  push("Adapt the exact count to the content, but keep this spine and these four buckets: settings, structure, video performance, video and content strategy, all tied to the point of view.");
+  push("This is the house deck. Match template-reference.pptx slide for slide. Every content slide from 4 on carries a BUCKET label above its title (BUCKET ONE / TWO / THREE / FOUR, plus a short section word), an assertion title, and one supporting line, exactly as the reference deck does. The buckets are: ONE settings and audience, TWO structure, THREE video performance and surfaces, FOUR video and content strategy and the destination. They intentionally interleave; keep the exact bucket label shown for each slide below. Every content slide has the small Lockhern mark and the footer line (Lockhern Digital, account, window) at the foot, and its slide number.");
   push('');
-  push('1. TITLE. Full-bleed primary blue ' + BRAND.primary + ' background, white logo, white type: account name, window, and the line: ' + POV.title + '.');
-  push("2. HOW WE JUDGE DEMAND GEN. A visual one-slide framework of our lens. Three pillars, each an icon in a blue circle with a short bold claim and one supporting line: The channel (Demand Gen buys attention on YouTube, a social and creative environment, judge it like social not search), The levers (creative and landing pages move this channel, a standard product page is usually not enough), The signal (we grade attention and mid funnel signal, not last click alone). Then a compact strip of the exact signals we grade on: video completion at 25, 50, 75, 100 percent, view-through, attributed brand search, brand lift, and cost per micro conversion. This slide must feel like a point of view. Do not render it as three columns of body text, which is how the last version failed.");
-  push("3. EXECUTIVE SUMMARY. Three findings that matter for THIS account, as large stat callouts, chosen from the findings list below. Do NOT lead with the percent of conversions outside the bidding column, and do NOT use the percent of ads that got an impression: most campaigns were intentionally paused this window, so that number is meaningless. The real headlines here are that creative is unmeasurable because one ad carries every video, that view-through carries most of the attributed action, and the single settings or structure point that matters most.");
-  push("4. SETTINGS: WHAT IS ALIGNED, WHAT TO FIX. A core bucket. Show only high-signal settings, each marked aligned, worth a look, or fix, and tie each to the point of view. Prioritize: conversion goals (which actions the campaign optimizes toward, and whether Add to Cart and Begin Checkout are among them), the AI asset enhancements (which are on or off, and which we would change and why), new versus existing customer bidding and whether the existing-customer list is excluded from prospecting, and view-through conversion optimization. Do not show any setting you cannot confirm. If the analyst attached settings screenshots, they are the source of truth here.");
-  push("5. CAMPAIGN STRUCTURE. Frame it correctly. Campaigns paused in this window are intentional and seasonal, not broken, so never call a paused campaign a failure or imply the account is mostly dead. The real structural finding is creative packing: one ad carries several videos, so Google reports a single blended completion rate and no individual video can be measured. Make that the headline. Show live versus paused simply, as context, not as the story.");
-  push("6. VIDEO PERFORMANCE. The one-page creative scorecard, a thumbnail per creative, all on one slide. Columns: source, impressions, cost, view rate, the 25 / 50 / 75 / 100 completion funnel, conversions, view-through, cost per conversion, and cost per conversion including view-through. Keep the title and subline close. Add one takeaway line: which creative is most efficient and which holds attention. Where watch depth is blank, add a small footnote saying it is blended because the videos share one ad.");
-  push("7. VIDEO AND CONTENT STRATEGY. Our creative recommendations through the lens, specific to what the scorecard shows: split every ad to one video each to recover per-creative measurement, seed audiences from watch behavior and top organic and Meta content, and review the AI shortened and enhanced cuts against the originals. Make it concrete and prioritized, not generic.");
-  push("8. LANDING PAGE AND CONVERSION PATH. A core bucket, and it was missing before. Show where the ads actually drive (the destination URLs are listed in the data below, with the spend behind each). Open and review those pages if you can. Then recommend, specifically for THIS client's business (read the destination pages and the account name to understand what they sell), what a better Demand Gen landing experience would be: Demand Gen buys cold attention, so a standard product page is usually the wrong destination. Recommend a purpose-built page, and state plainly which KPI we should test as the primary conversion for this audience: a quiz, an email or SMS capture, or a direct order. Tie the choice to the funnel stage this traffic is at. Make it a real recommendation, not a platitude.");
-  push("9. AUDIENCE STRATEGY, INCLUSIONS AND EXCLUSIONS. Who each ad group targets, and just as important, who it excludes. Call out clearly whether existing customers (past purchasers) are excluded from prospecting: excluding them is correct and worth crediting; failing to exclude them wastes prospecting budget on people who already buy. Use the ad-group audience data below and any audience screenshots the analyst attached as the source of truth, since the API cannot always read the exclusion inside a Demand Gen audience signal. Pair this with the age and gender skew as a visual talking-point slide, not four tables.");
-  push("10. CHANNEL AND SURFACE EFFICIENCY. A donut or bar of spend by surface plus efficiency. Drop any surface under about one percent of spend rather than cluttering the slide with it. State the takeaway plainly: where the money goes and where it is most and least efficient, comparing view rate against cost per action. If a surface shows a zero percent view rate, add a small caveat that view rate is not measured for that surface. Do not present zero percent as a real result.");
-  push("11. THE ONE THING. Full-bleed primary blue closing slide, white type and white logo. The single highest-leverage action stated plainly with why it matters, then a short list of the next moves.");
+  push('1. TITLE. Full-bleed primary blue ' + BRAND.primary + ' background, white logo top, white type: "DEMAND GEN AUDIT", the account name large, then window, account id, currency and "Google Ads Demand Gen" on one line, then the framing line "' + POV.title + '.", then "Prepared by Lockhern Digital" with the month and year at the foot.');
+  push("2. THE LENS. Title \"THE LENS\" with the assertion \"Demand Gen is a social channel, so we grade it like one.\" Three pillars across the slide, each an icon in a blue circle: THE CHANNEL (attention on YouTube, not intent on Search), THE LEVERS (creative and landing pages move this channel), THE SIGNAL (we grade attention and mid-funnel signal). One tight paragraph under each. Then a bottom strip headed \"THE SIGNALS WE GRADE ON\" listing: completion at 25 / 50 / 75 / 100, view-through conversions, attributed brand search, click-through rate, brand lift study, cost per quiz or email submit. This is a point-of-view slide; do not render it as three columns of plain body text.");
+  push("3. EXECUTIVE SUMMARY. Assertion title plus a one-line setup that states spend, conversions, cost per action and its change vs prior. Then THREE findings as large stat callouts, each under a small tag: FIX, READ IT RIGHT, WORTH A LOOK (match the reference). Choose the three from the findings list below. Do NOT lead with the percent of conversions outside the bidding column, and do NOT use the percent of ads that got an impression: most campaigns were intentionally paused, so that number is meaningless. The real headlines are that creative is unmeasurable because one ad carries every video, that view-through carries most of the attributed action, and the single settings point that matters most. Add a short \"what we are NOT calling a problem\" line (the intentionally paused seasonal campaigns), and the footnote that view-through sits outside cost per action and ROAS.");
+  push("4. BUCKET ONE, SETTINGS. Assertion title (for example: two settings are right, three are starving the algorithm). A three-column status table: SETTING, VERIFIED VALUE, WHAT IT MEANS THROUGH OUR LENS, each row tagged ALIGNED, FIX, or WORTH A LOOK. Show only settings you can confirm. Prioritise: conversion goals (Add to Cart, Purchase, and whether Begin Checkout reaches bidding), view-through conversion optimisation, new versus existing customer bidding and the purchaser exclusion, the AI asset enhancements, and delivery controls. End with a source line: read from the campaign and ad-group screens on the screenshot date, interface beats API on conflict. If the analyst attached settings screenshots, they are the truth here.");
+  push("5. BUCKET TWO, STRUCTURE. Assertion title about creative packing: one ad carries several videos, so Google reports a single blended watch rate and no individual video can be measured. Show the one live ad with its five (or N) video thumbnails, and the single blended watch-depth chart (share of impressions reaching 25 / 50 / 75 / 100, this window vs prior). Show live versus paused as small counts (campaigns, ad groups, ads, audiences), framed as intentional seasonal pushes, not failure. State plainly what splitting the ad recovers.");
+  push("6. BUCKET THREE, VIDEO PERFORMANCE. The one-page creative scorecard, a thumbnail per creative, all on one slide. Columns like the reference: CREATIVE, IMPR., COST, VIEW RATE, 25/50/75/100, CONV., VIEW-THRU, CPA, CPA INC. VT, and the source (advertiser upload vs Enhanced by Google AI). Watch depth reads \"blended\" per row where the videos share one ad. One takeaway line: the cheapest action and the strongest attention are usually different videos. Footnote the blended watch depth and that view-through sits outside CPA and ROAS.");
+  push("7. BUCKET FOUR, VIDEO AND CONTENT. Assertion \"Three creative moves, in this order.\" Three numbered moves (01, 02, 03), each tagged OBSERVED (data proves it) or TEST (it does not), each with a \"how we know it worked\" line: split the ad to one video each; seed audiences from watching and top organic TikTok and Meta cuts, not intent lists; turn on the AI Shorter and Resized cuts then judge them against the originals. Close with the concrete creative brief that follows.");
+  push("8. BUCKET FOUR, THE DESTINATION. Assertion about where all the spend lands (one page, one ad). Stat strip: spend, conversions, cost per action, ads pointing there, and the destination URL. Two columns: WHAT THE PAGE ALREADY DOES WELL vs WHAT IT ASKS A COLD VIEWER TO DO. Read the destination pages and the account name to understand what they sell. Then THE RECOMMENDATION: Demand Gen buys cold attention, so a standard product page is usually the wrong destination. Recommend a purpose-built page and name the primary KPI to test for this audience (a quiz, an email or SMS capture, or a direct order), and make it countable with new conversion actions. Footnote the device split if known.");
+  push("9. BUCKET ONE, AUDIENCE. Assertion crediting (or flagging) the purchaser exclusion. Three columns: WHO THE SIGNAL TARGETS (the audience lists), WHO IT KEEPS OUT (past purchasers, credited when excluded), AND WHO IT REACHES (gender split with spend share and cost per action). Include a \"spend by age range\" bar chart. Call out whether existing customers are excluded from prospecting: excluding them is correct and worth crediting. Use the ad-group audience data below and any audience screenshot as truth, since the API cannot read the exclusion inside a Demand Gen signal. Source line: ad-group audience screen, inferred demographics, undetermined share noted.");
+  push("10. BUCKET ONE, AUDIENCE VALIDATION. This is the brand-vs-Demand-Gen demographic slide. Assertion about whether Demand Gen has the right age and the right casting. A grouped bar of brand revenue share vs Demand Gen spend share by age band, and a cohort table: AGE, BRAND REVENUE (with share of revenue), DG SPEND (with share of spend), INDEX, BRAND ROAS. Index is DG spend share divided by brand revenue share; 1.0 means spend matches demand, above 1.0 is over-spend, below is under-spend. Then THREE numbers as callouts (for example the share of brand revenue from 35 and over, the biggest over-index, and the dollars over-invested there). Close with the move: bid down the over-indexed band, push budget to the under-bought band, cast creative accordingly. Use the brand comparison data block below verbatim; if it is absent, say the analyst has not run the brand comparison and keep the slide as a labelled placeholder rather than inventing numbers. Footnote that shares exclude unknown age and demographics are Google-inferred.");
+  push("11. BUCKET THREE, SURFACES. Assertion about where the budget goes vs what it buys. A bar of spend by surface plus a table: SURFACE, SPEND, CONV., CPA, VIEW RATE. Drop any surface under about one percent of spend. Compare the cheapest action against where people actually watch. If a surface shows a zero percent view rate, caveat that view rate is not measured there; do not present zero as a real result.");
+  push("12. THE ONE THING. Full-bleed primary blue closing slide, white type and white logo. \"THE ONE THING\" and the single highest-leverage action stated in a few words. Then THE NEXT MOVES as a short numbered list (01 to about 05) with a week label on each, and the closing line about judging the next 90 days on watch depth, view-through, attributed brand search and cost per quiz, not last-click purchases alone. Foot it with the account name, id and window.");
   push('');
-  push("Do not include a daily pacing slide, and do not include a separate methodology-notes slide. Fold only the two caveats that matter into small footnotes where they apply: view-through sits outside cost per action and ROAS, and watch depth is blended because the videos share an ad.");
+  push("Do not add a daily pacing slide or a separate methodology-notes slide. Fold only the two caveats that matter into small footnotes where they apply: view-through sits outside cost per action and ROAS, and watch depth is blended because the videos share an ad.");
   push('');
   if ((data.readout || {}).conversions) {
     push('## Findings you may use for the executive summary and titles');
@@ -2860,6 +2897,48 @@ function buildDeckPrompt_(data) {
     });
     push('');
   }
+  var cmp = null;
+  try { cmp = readBrandComparison_(a.rawId); } catch (e) { cmp = null; }
+  if (cmp && ((cmp.age || []).length || (cmp.gender || []).length)) {
+    push('## Brand vs Demand Gen demographics. Slide 10 (Audience validation).');
+    push('');
+    push('The analyst picked the brand benchmark: ' +
+        (cmp.selection === 'ALL' ? 'the whole account (all non Demand Gen campaigns)'
+            : 'campaign id(s) ' + cmp.selection) + '. Window ' + cmp.window.start +
+        ' to ' + cmp.window.end + '. Use these exact figures on slide 10. INDEX is ' +
+        'Demand Gen spend share divided by brand revenue share: above 1.0 is over-' +
+        'spend for that group relative to where brand revenue sits, below 1.0 is ' +
+        'under-spend. Brand ROAS is brand revenue divided by brand cost for that group.');
+    push('');
+    function cmpTable(label, rows) {
+      if (!rows || !rows.length) return;
+      push(label + ':');
+      push('| Band | Brand revenue | Brand rev share | DG spend | DG spend share | Index | Brand ROAS |');
+      push('|---|---|---|---|---|---|---|');
+      rows.forEach(function(r) {
+        push('| ' + [
+          r.band,
+          money0(r.brandRevenue),
+          pct1(r.brandRevShare),
+          money0(r.dgSpend),
+          pct1(r.dgSpendShare),
+          (r.index == null ? 'n/a' : r.index.toFixed(2) + 'x'),
+          (r.brandCost ? r.brandRoas.toFixed(2) : 'n/a')
+        ].join(' | ') + ' |');
+      });
+      push('');
+    }
+    cmpTable('By age band', cmp.age);
+    cmpTable('By gender', cmp.gender);
+  } else {
+    push('## Brand vs Demand Gen demographics. Slide 10 (Audience validation).');
+    push('');
+    push('The analyst has NOT run the brand comparison for this account, so there ' +
+        'is no brand-vs-Demand-Gen demographic data. Keep slide 10 in the deck as a ' +
+        'labelled placeholder titled BUCKET ONE, AUDIENCE VALIDATION that explains ' +
+        'the comparison is pending, rather than inventing numbers.');
+    push('');
+  }
   push('## Constraints');
   push('');
   push("- Never change a number, label, or date, unless a settings screenshot the analyst attached corrects it. If a figure looks wrong and you have no screenshot, flag it in your reply rather than editing the slide.");
@@ -2951,6 +3030,18 @@ function buildStoryboard_(data) {
       summary: count(data.audiences) + ' audience attachments.' },
     { key: 'demographics', kind: 'demographics', title: 'Demographics',
       summary: count(data.demographics) + ' age/gender rows.' },
+    { key: 'audienceValidation', kind: 'audienceValidation',
+      title: 'Audience validation (brand vs Demand Gen)',
+      summary: (function() {
+        var cmp = null;
+        try { cmp = readBrandComparison_((data.account || {}).rawId); }
+        catch (e) { cmp = null; }
+        return cmp && (cmp.age || []).length
+          ? 'Brand revenue vs DG spend by age, index and brand ROAS. Benchmark: ' +
+            (cmp.selection === 'ALL' ? 'whole account' : cmp.selection) + '.'
+          : 'Pick a brand benchmark in Audience validation and run the compare to ' +
+            'fill this slide.';
+      })() },
     { key: 'daily', kind: 'daily', title: 'Spend over time',
       summary: count(data.daily) + ' days of spend trend.' },
     { key: 'caveats', kind: 'caveats', title: 'How to read these numbers',
@@ -3060,6 +3151,229 @@ function readOverrides_() {
         if (key) out[key] = String(row[1] == null ? '' : row[1]);
       });
   return out;
+}
+
+// ===========================================================================
+// BRAND BENCHMARK — audience validation (deck slide 10)
+// ===========================================================================
+//
+// The audit judges a client's Demand Gen demographic spend against where their
+// brand actually earns revenue. The brand benchmark is a campaign (or set of
+// campaigns, or the whole account) the analyst picks in the dashboard — usually
+// a branded Search campaign, which is why the picker is NOT Demand-Gen filtered.
+// For each age band and gender we compute the brand's revenue share, the DG
+// spend share, an INDEX (spend share / revenue share; >1 means DG is overbuying
+// that group relative to where brand revenue sits), and the brand's ROAS.
+
+var AGE_BANDS = ['18-24', '25-34', '35-44', '45-54', '55-64', '65+', 'Unknown'];
+var GENDER_BANDS = ['Male', 'Female', 'Unknown'];
+
+/** Normalises the Ads age_range enum to a clean band label. */
+function ageBand_(enumVal) {
+  var v = String(enumVal || '').toUpperCase();
+  if (v.indexOf('18_24') !== -1) return '18-24';
+  if (v.indexOf('25_34') !== -1) return '25-34';
+  if (v.indexOf('35_44') !== -1) return '35-44';
+  if (v.indexOf('45_54') !== -1) return '45-54';
+  if (v.indexOf('55_64') !== -1) return '55-64';
+  if (v.indexOf('65_UP') !== -1 || v.indexOf('65_') !== -1) return '65+';
+  return 'Unknown';
+}
+
+/** Normalises the Ads gender enum to Male / Female / Unknown. */
+function genderBand_(enumVal) {
+  var v = String(enumVal || '').toUpperCase();
+  if (v.indexOf('FEMALE') !== -1) return 'Female';
+  if (v.indexOf('MALE') !== -1) return 'Male';
+  return 'Unknown';
+}
+
+/**
+ * A lighter config load for web-callable helpers that target one account passed
+ * from the dashboard. Unlike loadSettings_ it does not require the "Accounts to
+ * report" list, and it sets CURRENT so apiSearch_/gaql_ hit the right account.
+ */
+function ensureAccountContext_(customerId) {
+  var props = PropertiesService.getScriptProperties();
+  ['DEVELOPER_TOKEN', 'LOGIN_CUSTOMER_ID'].forEach(function(key) {
+    var value = props.getProperty(key);
+    if (value) CONFIG[key] = String(value).trim();
+  });
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss && ss.getSheetByName(SETTINGS_SHEET);
+  if (sheet && sheet.getLastRow() > 1) {
+    var map = {};
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues()
+        .forEach(function(row) { map[String(row[0]).trim().toLowerCase()] = row[1]; });
+    if (map['days to report']) CONFIG.LAST_N_DAYS = Number(map['days to report']);
+    if (map['google ads api version']) {
+      CONFIG.API_VERSION = String(map['google ads api version']).trim();
+    }
+  }
+  if (!CONFIG.DEVELOPER_TOKEN) {
+    throw new Error('No developer token. Add DEVELOPER_TOKEN under Project ' +
+        'Settings > Script Properties, then run refresh again.');
+  }
+  var id = digits_(customerId);
+  if (id.length < 8) throw new Error('No account selected.');
+  CURRENT = { id: id };
+  STARTED_AT = new Date().getTime();
+  RUN_LOG = [];
+  return id;
+}
+
+/**
+ * Every campaign in the account (NOT Demand-Gen filtered) with its channel and
+ * spend over the reporting window, for the brand-benchmark picker. Client-
+ * callable from the dashboard. Returns { ok, campaigns:[{id,name,status,
+ * channel,cost,revenue}], selection }.
+ */
+function listAllCampaigns(customerId) {
+  try {
+    ensureAccountContext_(customerId);
+    var range = buildDateRange_();
+    var rows = gaql_('All campaigns', 'campaign',
+        ['campaign.id', 'campaign.name', 'campaign.status',
+         'campaign.advertising_channel_type', 'metrics.cost_micros',
+         'metrics.conversions_value'],
+        [], range.current, 'metrics.cost_micros DESC');
+    var out = rows.map(function(r) {
+      return {
+        id: String(get_(r, 'campaign.id')),
+        name: get_(r, 'campaign.name'),
+        status: get_(r, 'campaign.status'),
+        channel: pretty_(get_(r, 'campaign.advertisingChannelType')),
+        cost: micros_(get_(r, 'metrics.costMicros')),
+        revenue: num_(get_(r, 'metrics.conversionsValue'))
+      };
+    });
+    // Enabled first, then by spend (the DESC order already sorts by spend).
+    out.sort(function(a, b) {
+      var ae = a.status === 'ENABLED' ? 0 : 1, be = b.status === 'ENABLED' ? 0 : 1;
+      return ae !== be ? ae - be : b.cost - a.cost;
+    });
+    return { ok: true, campaigns: out,
+             selection: readBrandSelection_(customerId) };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e).slice(0, 300) };
+  }
+}
+
+/** The saved brand-benchmark selection for an account: csv of ids, or 'ALL'. */
+function readBrandSelection_(customerId) {
+  var ov = readOverrides_();
+  return ov['brandCampaigns::' + digits_(customerId)] || '';
+}
+
+/** Turns a saved selection into the brand WHERE clause. */
+function brandWhere_(idsCsv) {
+  var sel = String(idsCsv || '').trim();
+  if (!sel || sel.toUpperCase() === 'ALL') {
+    return "campaign.advertising_channel_type != 'DEMAND_GEN'";
+  }
+  var ids = sel.split(/[,\s]+/).map(digits_).filter(function(x) {
+    return x.length >= 3;
+  });
+  if (!ids.length) return "campaign.advertising_channel_type != 'DEMAND_GEN'";
+  return 'campaign.id IN (' + ids.join(', ') + ')';
+}
+
+/**
+ * Age + gender spend/revenue for whatever WHERE clause is passed, keyed by
+ * clean band label. Used for both the brand side and the DG side.
+ */
+function pullDemoRaw_(label, whereClause, dateClause) {
+  var out = { age: {}, gender: {} };
+  var specs = [
+    { view: 'age_range_view', dim: 'age',
+      field: 'ad_group_criterion.age_range.type',
+      path: 'adGroupCriterion.ageRange.type', band: ageBand_ },
+    { view: 'gender_view', dim: 'gender',
+      field: 'ad_group_criterion.gender.type',
+      path: 'adGroupCriterion.gender.type', band: genderBand_ }
+  ];
+  specs.forEach(function(s) {
+    var rows = gaql_(label + ' ' + s.dim, s.view,
+        ['campaign.id', s.field, 'metrics.cost_micros', 'metrics.conversions',
+         'metrics.conversions_value'],
+        [], whereClause + ' AND ' + dateClause);
+    rows.forEach(function(r) {
+      var key = s.band(get_(r, s.path));
+      var bucket = out[s.dim][key] ||
+          (out[s.dim][key] = { cost: 0, conversions: 0, revenue: 0 });
+      bucket.cost += micros_(get_(r, 'metrics.costMicros'));
+      bucket.conversions += num_(get_(r, 'metrics.conversions'));
+      bucket.revenue += num_(get_(r, 'metrics.conversionsValue'));
+    });
+  });
+  return out;
+}
+
+/** Per-band comparison rows: brand revenue share vs DG spend share + index. */
+function compareBands_(order, brand, dg) {
+  var brandRevTotal = 0, dgSpendTotal = 0;
+  order.forEach(function(b) {
+    brandRevTotal += (brand[b] ? brand[b].revenue : 0);
+    dgSpendTotal += (dg[b] ? dg[b].cost : 0);
+  });
+  var rows = order.map(function(b) {
+    var br = brand[b] || { cost: 0, revenue: 0, conversions: 0 };
+    var d = dg[b] || { cost: 0, revenue: 0, conversions: 0 };
+    var brandRevShare = safeDiv_(br.revenue, brandRevTotal);
+    var dgSpendShare = safeDiv_(d.cost, dgSpendTotal);
+    return {
+      band: b,
+      brandRevenue: br.revenue,
+      brandCost: br.cost,
+      brandRoas: safeDiv_(br.revenue, br.cost),
+      brandRevShare: brandRevShare,
+      dgSpend: d.cost,
+      dgSpendShare: dgSpendShare,
+      // Spend share / revenue share. >1 = DG overbuys this group vs where the
+      // brand earns; <1 = underbuys. Null when there is no brand revenue to
+      // index against, so the UI can show a dash rather than a fake 0.
+      index: brandRevShare ? dgSpendShare / brandRevShare : null
+    };
+  });
+  return rows.filter(function(row) {
+    return row.brandRevenue || row.brandCost || row.dgSpend;
+  });
+}
+
+/**
+ * Live brand-vs-DG demographic comparison for the audience-validation slide.
+ * `idsCsv` is a csv of campaign ids, or 'ALL' for the whole account (all non-DG
+ * campaigns). Persists both the selection and the computed data (per account)
+ * so the dashboard and the deck can reuse them. Client-callable.
+ */
+function buildBrandComparison(customerId, idsCsv) {
+  try {
+    var id = ensureAccountContext_(customerId);
+    var range = buildDateRange_();
+    var brand = pullDemoRaw_('Brand', brandWhere_(idsCsv), range.current);
+    var dg = pullDemoRaw_('DG', DGEN, range.current);
+    var result = {
+      selection: String(idsCsv || 'ALL'),
+      window: { start: range.start, end: range.end },
+      age: compareBands_(AGE_BANDS, brand.age, dg.age),
+      gender: compareBands_(GENDER_BANDS, brand.gender, dg.gender),
+      generated: Utilities.formatDate(new Date(),
+          CONFIG.TIME_ZONE || 'America/New_York', 'MMM d, yyyy')
+    };
+    saveOverride('brandCampaigns::' + id, String(idsCsv || 'ALL'));
+    saveOverride('brandCompareData::' + id, JSON.stringify(result));
+    return { ok: true, data: result };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e).slice(0, 300) };
+  }
+}
+
+/** The saved comparison data for an account, parsed, or null. */
+function readBrandComparison_(customerId) {
+  var ov = readOverrides_();
+  var raw = ov['brandCompareData::' + digits_(customerId)];
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (e) { return null; }
 }
 
 function buildBrief_(data) {
@@ -3526,7 +3840,7 @@ var DECK = {
     // per-video appendix (one slide each), off by default so the client deck
     // stays tight. Flip it on for an internal deep-dive.
     creative: true, creativeDetail: false, adGroupSettings: true,
-    landingPages: true
+    landingPages: true, audienceValidation: true
   },
   THEME: {
     ink: BRAND.ink,
@@ -3643,6 +3957,8 @@ function bundleReadme_() {
     'Everything Claude needs to build the branded Lockhern deck is in this zip:',
     '',
     '- rough-deck.pptx      the auto-built deck to redesign',
+    '- template-reference.pptx  if present, the FINAL 12-slide house format to',
+    '                       match slide for slide (structure, not numbers)',
     '- audit-data.xlsx      the full dataset (all tabs), authoritative',
     '- PROMPT.md            the deck-design prompt, paste this to Claude',
     '- logo-*.png           the default Lockhern logos to embed',
@@ -3720,6 +4036,41 @@ function buildBundle(deckUrls, screenshots, uiLogos) {
       if (xr.getResponseCode() === 200) add(xr.getBlob().setName('audit-data.xlsx'));
       else warnings.push('Data .xlsx export failed (HTTP ' +
           xr.getResponseCode() + ').');
+    }
+
+    // The FINAL reference deck (the locked 12-slide house format), when the
+    // analyst has set its Drive ID. Ship it so the branded rebuild matches it
+    // slide for slide. Handles both an uploaded .pptx (download the bytes) and a
+    // Google Slides file (export to pptx).
+    var tplId = driveId_(readSettingRaw_('template deck drive id'));
+    if (tplId) {
+      var meta = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' +
+          tplId + '?fields=mimeType,name&supportsAllDrives=true', {
+        headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true
+      });
+      if (meta.getResponseCode() === 200) {
+        var mime = '';
+        try { mime = JSON.parse(meta.getContentText()).mimeType || ''; } catch (e) {}
+        var tplUrl = mime === 'application/vnd.google-apps.presentation'
+            ? 'https://docs.google.com/presentation/d/' + tplId + '/export/pptx'
+            : 'https://www.googleapis.com/drive/v3/files/' + tplId +
+              '?alt=media&supportsAllDrives=true';
+        var tr = UrlFetchApp.fetch(tplUrl, {
+          headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true
+        });
+        var tct = String(tr.getHeaders()['Content-Type'] ||
+            tr.getBlob().getContentType() || '');
+        if (tr.getResponseCode() === 200 && tct.indexOf('html') === -1) {
+          add(tr.getBlob().setName('template-reference.pptx'));
+        } else {
+          warnings.push('Template deck export failed (HTTP ' +
+              tr.getResponseCode() + '). Check the Template deck Drive ID is ' +
+              'shared with this account.');
+        }
+      } else {
+        warnings.push('Template deck not found (HTTP ' + meta.getResponseCode() +
+            '). Check the Template deck Drive ID in the Settings tab.');
+      }
     }
 
     var logos = brandLogos_();
@@ -4107,7 +4458,7 @@ function deckForAccount_(data) {
                   DECK.CREATIVE_ROWS_PER_PAGE) : 0;
   var appendixSlides = DECK.SECTIONS.creativeDetail && creativeCount
       ? Math.min(creativeCount, DECK.VIDEOS) + 1 : 0;
-  var FIXED_SECTIONS = 14;
+  var FIXED_SECTIONS = 15;
   var totalSteps = FIXED_SECTIONS + scorecardPages + appendixSlides;
   var step = 0;
   var skipped = [];
@@ -4590,6 +4941,33 @@ function deckForAccount_(data) {
         return [String(r.text).slice(0, 60), r.fieldType, r.label,
                 int(r.impressions), int(r.clicks), pct(r.ctr)];
       }));
+  });
+
+  // --- audience validation (brand demographics vs Demand Gen) ---------------
+  // Only appears once the analyst has run the brand comparison in the dashboard,
+  // which stores the data per account. This is the rough version of slide 10;
+  // the branded rebuild gets the same figures through the deck prompt.
+  section('Audience validation', false, function() {
+    var cmp = null;
+    try { cmp = readBrandComparison_(account.rawId); } catch (e) { cmp = null; }
+    if (!cmp || !(cmp.age || []).length) return;
+    var benchmark = cmp.selection === 'ALL'
+        ? 'whole account (all non Demand Gen)' : 'campaigns ' + cmp.selection;
+    var slide = tableSlide('audienceValidation',
+      'Audience validation: brand revenue vs Demand Gen spend',
+      ['Age', 'Brand revenue', 'Brand ROAS', 'DG spend', 'Index'],
+      cmp.age.map(function(r) {
+        return [r.band, fmtMoney(r.brandRevenue),
+                r.brandCost ? r.brandRoas.toFixed(2) : '—',
+                fmtMoney(r.dgSpend),
+                r.index == null ? '—' : r.index.toFixed(2) + 'x'];
+      }));
+    if (slide) {
+      box(slide, 'Benchmark: ' + benchmark + '. Index is DG spend share divided ' +
+          'by brand revenue share; above 1.0 over-spends that age vs where the ' +
+          'brand earns, below 1.0 under-spends.', M, H - 30, W - M * 2, 24, 9,
+          false, T.muted);
+    }
   });
 
   // --- daily trend ---------------------------------------------------------

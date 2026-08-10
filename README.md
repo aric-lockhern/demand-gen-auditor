@@ -76,6 +76,37 @@ tells Claude to treat any attached settings screenshots or pasted text as truth
 and correct anything the API read wrong (e.g. conversion goals). Unconfirmed
 settings are omitted from the deck rather than shown as a loud "review".
 
+### Audience validation: brand vs Demand Gen (deck slide 10)
+
+The audit can judge where Demand Gen spends against where the brand actually
+earns. In the dashboard, **Audience → Audience validation**:
+
+- **Load campaigns** runs a live pull of every campaign in the account (all
+  channels, not just Demand Gen), so you can pick the **brand benchmark**.
+- Pick **one** campaign, **several**, or tick **Whole account** (all non Demand
+  Gen campaigns). The usual benchmark is a branded Search campaign.
+- **Compare demographics** pulls brand revenue and Demand Gen spend by age and
+  gender, and computes each band's brand-revenue share, DG-spend share, an
+  **index** (spend share ÷ revenue share — above 1.0 is over-spend relative to
+  where the brand earns, below 1.0 is under-spend), and **brand ROAS**.
+
+The selection and the computed comparison persist per account (in `_overrides`)
+and flow into both the rough deck's audience-validation slide and the deck
+prompt, so the branded rebuild renders the same figures. Backed by
+`listAllCampaigns` and `buildBrandComparison`, which set the account context
+themselves and so are safe to call straight from the dashboard.
+
+### Locked 12-slide house format
+
+The deck prompt is locked to a fixed **12-slide** house format (title, the lens,
+executive summary, then the interleaved buckets: settings, structure, video
+performance, video and content, the destination, audience, audience validation,
+surfaces, and the closing "one thing"). Set **Settings tab → "Template deck
+Drive ID"** to the FINAL reference deck (an uploaded `.pptx` or a Google Slides
+file, shared with this account) and the build bundle includes it as
+`template-reference.pptx`; the prompt tells Claude to match it slide for slide so
+the output is the same deck every time, only the numbers changing.
+
 ### The deck flow (guided wizard)
 
 The dashboard header has a four-step **Deck builder**:

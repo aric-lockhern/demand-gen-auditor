@@ -80,30 +80,58 @@ Embed the provided logo files; do not recreate the logo.
 
 Motif: primary blue (`#317AE0`) is the signature colour. Use it full-bleed on the title, closing and any section-divider slides; content slides stay light for readability. Primary blue is the single accent. Keep tertiary navy to a minimum. No stripes, no accent bars under titles.
 
-## Slides, in order
+## Slides, in order — the locked 12-slide house format
 
-1. **Title** — full-bleed primary blue, white logo, account name, window, and the line "A full-funnel, creative-led approach to Demand Gen" as the framing.
-2. **Executive summary** — three or four findings, each one line, each carrying
-   its number. This is the slide people read.
-3. **How we judge Demand Gen** — a short POV slide stating the lens (social not
-   search; creative + landing pages are the levers; measured on attention and
-   mid-funnel signal).
-4. **Headline numbers** — this period vs prior, with real hierarchy.
-5. **What is actually delivering** — entities that exist vs deliver.
-6. **Creative scorecard — ONE page.** Every creative on a single slide, styled
-   like the Google Ads video table: a small YouTube thumbnail per row, the source
-   (advertiser vs Enhanced by Google AI), impressions, view rate, the
-   25/50/75/100% watch funnel, conversions, and view-through. Only spill to a
-   second page if the rows genuinely do not fit. **Do NOT make one slide per
-   creative.** Pull thumbnails from the Creative appendix URLs. Call out the
-   AI-modified cuts as a group.
-7. **Channel and ad-format splits** — donut/bar plus a table.
-8. **What counted as a conversion** — and whether ATC / Begin Checkout are
-   Primary (our deliberate stance) or purchase-only.
-9. **Structure** — campaigns, ad groups, audiences, demographics, assets.
-10. **Spend over time.**
-11. **How to read these numbers** — the caveats, kept in full.
-12. **Closing** — full-bleed primary blue, logo, and the one recommendation that matters most.
+This deck has a **fixed format**. When you build from the dashboard, a finished
+reference deck ships in the bundle as `template-reference.pptx` — open it first
+and match it slide for slide (layout, type, colour, bucket labels). Only the
+content changes per account, never the structure. Produce exactly 12 slides.
+Every content slide from 4 on carries a **bucket label** above its title (BUCKET
+ONE / TWO / THREE / FOUR plus a short section word), an assertion title, and one
+supporting line, plus the small mark and footer line at the foot.
+
+1. **Title** — full-bleed primary blue, white logo, "DEMAND GEN AUDIT", account
+   name, window / id / currency, the framing line "A full-funnel, creative-led
+   approach to Demand Gen.", and "Prepared by Lockhern Digital" with month and year.
+2. **The lens** — three pillars (THE CHANNEL, THE LEVERS, THE SIGNAL), each an
+   icon in a blue circle with a short claim and one line, then a strip of the
+   exact signals we grade on. A point-of-view slide, not three columns of text.
+3. **Executive summary** — a one-line setup (spend, conversions, CPA and its
+   change), then three findings as large stat callouts under tags FIX / READ IT
+   RIGHT / WORTH A LOOK. Add the "what we are not calling a problem" line and the
+   view-through footnote.
+4. **Bucket one · Settings** — SETTING / VERIFIED VALUE / WHAT IT MEANS status
+   table, each row ALIGNED / FIX / WORTH A LOOK. Only confirmed settings. Source
+   line: interface beats API on conflict.
+5. **Bucket two · Structure** — the creative-packing finding: one ad carries N
+   videos, so watch depth is blended and no single video can be measured. Show
+   the thumbnails, the blended watch-depth chart, and live-vs-paused counts as
+   intentional seasonal context.
+6. **Bucket three · Video performance** — the one-page creative scorecard. A
+   thumbnail per creative, columns CREATIVE / IMPR. / COST / VIEW RATE /
+   25·50·75·100 / CONV. / VIEW-THRU / CPA / CPA INC. VT and the source. **Do NOT
+   make one slide per creative.** Footnote the blended watch depth.
+7. **Bucket four · Video and content** — three numbered moves (01/02/03), each
+   tagged OBSERVED or TEST with a "how we know it worked" line: split the ad,
+   seed audiences from watching, turn on the AI cuts and judge them.
+8. **Bucket four · The destination** — where all the spend lands. Stat strip,
+   then WHAT THE PAGE DOES WELL vs WHAT IT ASKS A COLD VIEWER TO DO, then the
+   recommendation: a purpose-built page and the primary KPI to test (quiz, email
+   or SMS capture, or a direct order).
+9. **Bucket one · Audience** — WHO THE SIGNAL TARGETS / WHO IT KEEPS OUT / AND
+   WHO IT REACHES, with a spend-by-age chart. Credit the purchaser exclusion when
+   it is in place. Use the ad-group audience screenshot as truth.
+10. **Bucket one · Audience validation** — the brand-vs-Demand-Gen demographic
+    slide. A grouped bar of brand revenue share vs DG spend share by age, and a
+    cohort table AGE / BRAND REVENUE / DG SPEND / INDEX / BRAND ROAS. Index is DG
+    spend share divided by brand revenue share (1.0 means spend matches demand).
+    Use the brand comparison data the dashboard supplies; if it is absent, keep
+    the slide as a labelled placeholder rather than inventing numbers.
+11. **Bucket three · Surfaces** — spend by surface plus SURFACE / SPEND / CONV. /
+    CPA / VIEW RATE. Drop surfaces under ~1% of spend. Caveat any zero view rate.
+12. **The one thing** — full-bleed primary blue closing slide, white logo, the
+    single highest-leverage action, then THE NEXT MOVES as a numbered list with
+    week labels.
 
 ## What to change
 
