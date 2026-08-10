@@ -2372,6 +2372,130 @@ function buildStrategyReco() {
     .buildStrategy(CURRENT_ACCOUNT);
 }
 
+// ---------------------------------------------------------------------------
+// AI analysis — Claude reads the account and returns structured recommendations
+// ---------------------------------------------------------------------------
+var AI_DATA = null;
+var AI_LOADED = false;
+
+function drawAiAnalysis() {
+  document.getElementById('count').textContent =
+      AI_DATA ? 'analysis ready' : 'not run yet';
+  var intro = '<div class="rb-sub" style="margin:0 0 14px">Claude reads all the ' +
+    'account data plus your notes and settings ground truth, and returns clean, ' +
+    'client-ready recommendations: the executive summary, actions across ' +
+    'settings, structure, creative, landing pages, audiences and measurement, ' +
+    'the one thing that matters, and a design direction. These flow into the ' +
+    'deck prompt and the rough deck. Runs on your Anthropic key, so each ' +
+    'analysis costs a few cents to a few dollars.</div>';
+  var action = '<div style="margin-bottom:16px">' +
+    '<button class="briefbtn" id="aiBtn" style="border-color:var(--accent);' +
+    'color:var(--accent);font-weight:600">' +
+    (AI_DATA ? 'Re-analyze with AI' : 'Analyze with AI') + '</button>' +
+    '<span id="aiStatus" class="ovr-state" style="margin-left:10px"></span></div>';
+  var body = AI_DATA ? drawAiData(AI_DATA)
+    : '<div class="empty">No analysis yet. Click Analyze with AI. Needs an ' +
+      'Anthropic API key in Script Properties (ANTHROPIC_API_KEY).</div>';
+  return intro + action + body;
+}
+
+function drawAiData(a) {
+  var out = '';
+  if ((a.executiveSummary || []).length) {
+    out += '<div class="subhead">Executive summary</div>' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px">' +
+      a.executiveSummary.map(function(f) {
+        var color = f.tag === 'FIX' ? 'var(--down)' :
+          f.tag === 'WORTH A LOOK' ? '#C98A1B' : 'var(--accent)';
+        return '<div style="flex:1;min-width:220px;border:1px solid var(--rule);' +
+          'border-radius:12px;padding:14px;background:var(--card)">' +
+          '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;' +
+          'color:' + color + '">' + esc(f.tag) + '</div>' +
+          '<div style="font-family:var(--serif,inherit);font-size:26px;' +
+          'font-weight:700;margin:4px 0;color:var(--ink)">' + esc(f.stat) + '</div>' +
+          '<div style="font-size:13px;font-weight:600">' + esc(f.label) + '</div>' +
+          '<div class="meta" style="margin-top:6px">' + esc(f.detail) + '</div>' +
+          '</div>';
+      }).join('') + '</div>';
+  }
+  if (a.oneThing) {
+    out += '<div style="border:1px solid var(--accent);border-radius:12px;' +
+      'padding:14px;margin:14px 0;background:var(--wash)"><div class="section-label" ' +
+      'style="color:var(--accent)">The one thing</div><div style="font-size:15px;' +
+      'font-weight:600;margin-top:4px">' + esc(a.oneThing) + '</div></div>';
+  }
+  if ((a.recommendations || []).length) {
+    // Group by area, preserving order of first appearance.
+    var order = [], byArea = {};
+    a.recommendations.forEach(function(r) {
+      if (!byArea[r.area]) { byArea[r.area] = []; order.push(r.area); }
+      byArea[r.area].push(r);
+    });
+    out += '<div class="subhead">Recommendations</div>';
+    order.forEach(function(area) {
+      out += '<div class="section-label" style="margin-top:12px">' + esc(area) +
+        '</div>';
+      byArea[area].forEach(function(r) {
+        var pc = r.priority === 'High' ? 'var(--down)' :
+          r.priority === 'Low' ? 'var(--muted)' : '#C98A1B';
+        out += '<div style="border:1px solid var(--rule);border-radius:10px;' +
+          'padding:12px 14px;margin:8px 0;background:var(--card)">' +
+          '<div style="display:flex;justify-content:space-between;gap:10px">' +
+          '<strong>' + esc(r.title) + '</strong>' +
+          '<span style="font-size:11px;font-weight:700;color:' + pc + '">' +
+          esc(r.priority) + '</span></div>' +
+          '<div class="meta" style="margin:6px 0">' + esc(r.insight) + '</div>' +
+          '<div style="font-size:13px"><strong>Do:</strong> ' + esc(r.action) +
+          '</div></div>';
+      });
+    });
+  }
+  if (a.designDirection) {
+    out += '<div class="note" style="margin-top:16px"><b>Deck design direction.</b> ' +
+      esc(a.designDirection) + '</div>';
+  }
+  out += '<div class="meta" style="margin-top:12px">Saved for the deck. Model: ' +
+    esc(a._model || '') + (a._mode ? ' · ' + esc(a._mode) + ' mode' : '') + '.</div>';
+  return out;
+}
+
+function bindAiAnalysis() {
+  var btn = document.getElementById('aiBtn');
+  if (btn) btn.onclick = runAiAnalysis;
+  if (!AI_LOADED && !AI_DATA) {
+    AI_LOADED = true;
+    if (window.google && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res && res.ok && res.data) { AI_DATA = res.data; render(); }
+        })
+        .withFailureHandler(function() {})
+        .getAiAnalysis(CURRENT_ACCOUNT);
+    }
+  }
+}
+
+function runAiAnalysis() {
+  var status = document.getElementById('aiStatus');
+  if (!(window.google && google.script && google.script.run)) {
+    avState(status, 'preview only', 'var(--down)'); return;
+  }
+  avState(status, 'analyzing… (this can take a minute)', 'var(--muted)');
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.ok) {
+        avState(status, (res && res.error) || 'failed', 'var(--down)'); return;
+      }
+      AI_DATA = res.data;
+      avState(status, 'done', 'var(--up)');
+      render();
+    })
+    .withFailureHandler(function(e) {
+      avState(status, String((e && e.message) || 'failed'), 'var(--down)');
+    })
+    .runAiAnalysis(CURRENT_ACCOUNT);
+}
+
 function drawLandingPages() {
   var rows = DATA.landingPages || [];
   document.getElementById('count').textContent = rows.length + ' destinations';
@@ -2584,6 +2708,8 @@ var VIEWS = {
     rows: function() { return (BRAND_COMPARE && BRAND_COMPARE.age) || []; } },
   strategy: { label: 'Strategy mode', custom: true,
     rows: function() { return (STRATEGY_DATA && STRATEGY_DATA.audiences) || []; } },
+  aiAnalysis: { label: 'Analyze with AI', custom: true,
+    rows: function() { return (AI_DATA && AI_DATA.recommendations) || []; } },
   settings: { label: 'Settings', custom: true,
     rows: function() { return ((DATA.settings || {}).campaigns) || []; } },
   conversions: { label: 'Conversions', custom: true,
@@ -2675,7 +2801,8 @@ var GROUPS = [
   { label: 'Audience', views: ['audiences', 'demographics', 'audienceValidation'] },
   { label: 'Structure', views: ['campaigns', 'adGroups', 'settings'] },
   { label: 'Outcomes', views: ['conversions', 'daily'] },
-  { label: 'Launch', views: ['strategy'] }
+  { label: 'Launch', views: ['strategy'] },
+  { label: 'AI', views: ['aiAnalysis'] }
 ];
 
 function groupOf(viewId) {
@@ -2993,6 +3120,12 @@ function render() {
   if (ACTIVE === 'strategy') {
     panel.innerHTML = drawStrategy();
     bindStrategy();
+    return;
+  }
+
+  if (ACTIVE === 'aiAnalysis') {
+    panel.innerHTML = drawAiAnalysis();
+    bindAiAnalysis();
     return;
   }
 

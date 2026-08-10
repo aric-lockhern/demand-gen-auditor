@@ -137,6 +137,32 @@ where to drive, the launch setup) rather than an audit. Backed by
 `buildStrategy`, `getStrategyData`, `setStrategyMode`, `buildStrategyPrompt_` and
 `deckForStrategy_`.
 
+### Analyze with AI (Claude in the tool)
+
+The dashboard's **AI → Analyze with AI** button sends the whole account (the
+audit brief, or the launch data in Strategy mode) plus your own context (the
+storyboard notes and the settings ground truth) to Claude, and gets back
+clean, structured, client-ready recommendations:
+
+- three executive-summary findings (tagged FIX / READ IT RIGHT / WORTH A LOOK),
+- recommendations across settings, structure, creative, landing pages,
+  audiences, surfaces and measurement, each with an insight, an action and a
+  priority,
+- the single most important move, and a one-line deck design direction.
+
+These render in the dashboard, persist per account (a hidden `_ai_<id>` sheet),
+flow into the deck prompt as **authoritative analyst direction**, and drop an
+**AI analyst recommendations** slide into the rough deck. The branded rebuild
+then leads with Claude's own reading of the account.
+
+**Setup.** Add your Anthropic API key as a Script Property `ANTHROPIC_API_KEY`
+(from console.anthropic.com). Set the model in **Settings tab → "Claude model"**
+(`claude-opus-5` is best; `claude-sonnet-5` is cheaper). It calls the Anthropic
+Messages API directly (`api.anthropic.com`, the existing external-request
+scope), returns structured JSON via output schema, and runs on **your** Anthropic
+account, so each analysis costs a few cents to a few dollars. It is a deliberate
+button, never automatic.
+
 ### The deck flow (guided wizard)
 
 The dashboard header has a four-step **Deck builder**:

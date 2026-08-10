@@ -84,7 +84,16 @@ var CONFIG = {
 
   // Per account. Apps Script allows 6 minutes per execution on consumer
   // accounts, 30 on Workspace, so multi-account runs need a per-account cap.
-  TIME_BUDGET_SECONDS: 240
+  TIME_BUDGET_SECONDS: 240,
+
+  // Claude analysis layer. The API key is a Script Property (ANTHROPIC_API_KEY)
+  // so sharing the Sheet never leaks it. Model and version come from the
+  // Settings tab. Runs on the analyst's own Anthropic account, so it costs per
+  // analysis; keep it a deliberate button, not an automatic step.
+  ANTHROPIC_API_KEY: '',
+  AI_MODEL: 'claude-opus-5',
+  AI_API_VERSION: '2023-06-01',
+  AI_MAX_TOKENS: 20000
 };
 
 var CHANNELS = {
@@ -443,6 +452,11 @@ function setup() {
      'reach a client account through a manager. Sent as the login-customer-id ' +
      'header. A Script Property of the same name (LOGIN_CUSTOMER_ID) wins if ' +
      'set. Fixes "caller does not have permission / manager id must be set".'],
+    ['Claude model', 'claude-opus-5',
+     'Model for the "Analyze with AI" button. claude-opus-5 is best; ' +
+     'claude-sonnet-5 is cheaper. Needs a Script Property ANTHROPIC_API_KEY ' +
+     '(your Anthropic key). Each analysis costs a few cents to a few dollars on ' +
+     'your Anthropic account, so it is a manual button, not automatic.'],
     ['Template deck Drive ID', '',
      'Optional. Drive ID or share URL of the FINAL reference deck (the 12-slide ' +
      'house format). When set, the build bundle includes it as ' +
@@ -2755,6 +2769,9 @@ function buildDeckPrompt_(data) {
   push('   example excluding past purchasers), use that as truth for slide 9.');
   push('');
 
+  var aiBlock = aiBlockForPrompt_(a.rawId);
+  if (aiBlock) { push(aiBlock); }
+
   push('## Our point of view. Carry this argument through the whole deck.');
   push('');
   push('The thesis: ' + POV.title + '.');
@@ -3047,6 +3064,8 @@ function buildStrategyPrompt_(s) {
   push('');
   push('Frame expectations plainly: ' + POV.expectation);
   push('');
+  var aiBlk = aiBlockForPrompt_(a.rawId);
+  if (aiBlk) { push(aiBlk); }
   brandBlockForPrompt_(push);
   push('## The launch-plan format. Build these slides, in this order.');
   push('');
@@ -3525,7 +3544,7 @@ function genderBand_(enumVal) {
  */
 function ensureAccountContext_(customerId) {
   var props = PropertiesService.getScriptProperties();
-  ['DEVELOPER_TOKEN', 'LOGIN_CUSTOMER_ID'].forEach(function(key) {
+  ['DEVELOPER_TOKEN', 'LOGIN_CUSTOMER_ID', 'ANTHROPIC_API_KEY'].forEach(function(key) {
     var value = props.getProperty(key);
     if (value) CONFIG[key] = String(value).trim();
   });
@@ -3539,6 +3558,7 @@ function ensureAccountContext_(customerId) {
     if (map['google ads api version']) {
       CONFIG.API_VERSION = String(map['google ads api version']).trim();
     }
+    if (map['claude model']) CONFIG.AI_MODEL = String(map['claude model']).trim();
     // Manager (MCC) id: Script Property wins, but fall back to the Settings tab
     // so the web-callable helpers reach a client account under a manager even
     // when only the sheet is configured.
@@ -4161,6 +4181,297 @@ function readStrategy_(customerId) {
       .map(function(row) { return row[0]; }).join('');
   if (!raw) return null;
   try { return JSON.parse(raw); } catch (e) { return null; }
+}
+
+// ===========================================================================
+// CLAUDE ANALYSIS — the AI analyst layer
+// ===========================================================================
+//
+// Sends the account's data plus the analyst's own context to Claude and gets
+// back clean, structured recommendations (executive summary, per-area actions,
+// the one thing, a design direction). Those render in the dashboard, flow into
+// the deck prompt, and drop an AI-authored recommendations slide into the rough
+// deck. Runs on the analyst's own Anthropic key, so it is a manual button.
+
+var AI_PREFIX = '_ai_';
+
+// The structured shape Claude must return. No length constraints and
+// additionalProperties:false everywhere, per the structured-outputs rules.
+var AI_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    executiveSummary: {
+      type: 'array',
+      items: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          tag: { type: 'string', enum: ['FIX', 'READ IT RIGHT', 'WORTH A LOOK'] },
+          stat: { type: 'string' },
+          label: { type: 'string' },
+          detail: { type: 'string' }
+        },
+        required: ['tag', 'stat', 'label', 'detail']
+      }
+    },
+    recommendations: {
+      type: 'array',
+      items: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          area: { type: 'string', enum: ['Settings', 'Structure', 'Creative',
+              'Landing pages', 'Audiences', 'Surfaces', 'Measurement'] },
+          title: { type: 'string' },
+          insight: { type: 'string' },
+          action: { type: 'string' },
+          priority: { type: 'string', enum: ['High', 'Medium', 'Low'] }
+        },
+        required: ['area', 'title', 'insight', 'action', 'priority']
+      }
+    },
+    oneThing: { type: 'string' },
+    designDirection: { type: 'string' }
+  },
+  required: ['executiveSummary', 'recommendations', 'oneThing', 'designDirection']
+};
+
+/** Loads just the Anthropic key (Script Property) and model (Settings tab). */
+function loadAiConfig_() {
+  var key = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
+  if (key) CONFIG.ANTHROPIC_API_KEY = String(key).trim();
+  var model = readSettingRaw_('claude model');
+  if (model) CONFIG.AI_MODEL = model;
+}
+
+/**
+ * One call to the Anthropic Messages API. Structured output only. Returns the
+ * parsed object, or throws a readable error. Raw HTTP (Apps Script has no SDK);
+ * scope script.external_request is already granted.
+ */
+function callClaude_(system, userText, schema) {
+  if (!CONFIG.ANTHROPIC_API_KEY) {
+    throw new Error('No Anthropic API key. Add ANTHROPIC_API_KEY under Project ' +
+        'Settings > Script Properties (your key from console.anthropic.com), ' +
+        'then try again.');
+  }
+  var body = {
+    model: CONFIG.AI_MODEL || 'claude-opus-5',
+    max_tokens: CONFIG.AI_MAX_TOKENS || 20000,
+    output_config: {
+      effort: 'medium',
+      format: { type: 'json_schema', schema: schema }
+    },
+    system: system,
+    messages: [{ role: 'user', content: userText }]
+  };
+  var resp = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      'x-api-key': CONFIG.ANTHROPIC_API_KEY,
+      'anthropic-version': CONFIG.AI_API_VERSION || '2023-06-01'
+    },
+    payload: JSON.stringify(body),
+    muteHttpExceptions: true
+  });
+  var code = resp.getResponseCode();
+  var text = resp.getContentText();
+  if (code === 401) {
+    throw new Error('Anthropic rejected the API key (401). Check ' +
+        'ANTHROPIC_API_KEY in Script Properties.');
+  }
+  if (code === 429) {
+    throw new Error('Anthropic rate limit (429). Wait a moment and retry.');
+  }
+  if (code !== 200) {
+    var msg = text;
+    try { msg = JSON.parse(text).error.message || text; } catch (e) {}
+    throw new Error('Anthropic error ' + code + ': ' + String(msg).slice(0, 300));
+  }
+  var parsed;
+  try { parsed = JSON.parse(text); } catch (e) {
+    throw new Error('Could not parse Anthropic response.');
+  }
+  if (parsed.stop_reason === 'refusal') {
+    throw new Error('Claude declined this request (refusal). Nothing in the ' +
+        'audit should trigger that; try again or simplify the notes.');
+  }
+  // Structured output arrives as the first text block, valid JSON.
+  var out = '';
+  (parsed.content || []).forEach(function(b) {
+    if (b.type === 'text') out += b.text;
+  });
+  if (!out) throw new Error('Empty response from Claude (stop_reason ' +
+      (parsed.stop_reason || '?') + ').');
+  try { return JSON.parse(out); } catch (e) {
+    throw new Error('Claude returned non-JSON despite the schema.');
+  }
+}
+
+/**
+ * Analyse an account with Claude and store the structured recommendations.
+ * Client-callable. Uses the audit payload, or (in strategy mode) the launch
+ * data, plus the analyst's notes, overrides and ground truth as context.
+ */
+function runAiAnalysis(customerId) {
+  try {
+    var id = digits_(customerId);
+    loadAiConfig_();
+    var strategyMode = readStrategyMode_(id);
+
+    var system = 'You are a senior paid-media strategist at Lockhern Digital. ' +
+        'Your point of view: ' + POV.title + '. ' + POV.thesis + ' ' +
+        'You judge Demand Gen as a social, creative, full-funnel channel, not a ' +
+        'search channel: creative and landing pages are the levers, and success ' +
+        'shows up first in attention and mid-funnel signal, not last-click ' +
+        'purchases. Write for a client. Be specific, concrete and honest, never ' +
+        'generic. Never use an em dash or en dash. Return only the JSON the ' +
+        'schema defines. Titles are assertions that carry their number, not ' +
+        'labels. Recommendations must be actionable and tied to this account’s ' +
+        'own numbers.';
+
+    var userText;
+    if (strategyMode) {
+      var strat = readStrategy_(id);
+      if (!strat) {
+        return { ok: false, error: 'Build the launch recommendation first ' +
+            '(Strategy mode), then analyze with AI.' };
+      }
+      userText = aiStrategyContext_(strat);
+    } else {
+      var raw = readPayload_(id);
+      if (!raw) return { ok: false, error: 'No cached data. Run refresh first.' };
+      userText = aiAuditContext_(JSON.parse(raw));
+    }
+
+    var result = callClaude_(system, userText, AI_SCHEMA);
+    result._mode = strategyMode ? 'strategy' : 'audit';
+    result._model = CONFIG.AI_MODEL;
+    saveAi_(id, result);
+    return { ok: true, data: result };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e).slice(0, 400) };
+  }
+}
+
+/** Client-callable: the stored AI analysis for an account, or null. */
+function getAiAnalysis(customerId) {
+  try { return { ok: true, data: readAi_(customerId) }; }
+  catch (e) { return { ok: false, error: String(e.message || e).slice(0, 200) }; }
+}
+
+/** The audit brief plus the analyst's own context, as the user message. */
+function aiAuditContext_(data) {
+  var lines = [];
+  lines.push('Analyze this Google Ads Demand Gen audit and return structured');
+  lines.push('recommendations. This is a live account we already run.');
+  lines.push('');
+  try { lines.push(buildBrief_(data)); } catch (e) {}
+  var notes = {};
+  try { notes = readCommentary_(); } catch (e) {}
+  var noteKeys = Object.keys(notes).filter(function(k) {
+    return String(notes[k] || '').trim();
+  });
+  if (noteKeys.length) {
+    lines.push('');
+    lines.push('## Analyst notes (client context you should weight heavily)');
+    noteKeys.forEach(function(k) {
+      lines.push('- ' + k + ': ' + String(notes[k]).trim());
+    });
+  }
+  var ov = {};
+  try { ov = readOverrides_(); } catch (e) {}
+  if (ov['settingsGroundTruth']) {
+    lines.push('');
+    lines.push('## Settings ground truth (authoritative, from the platform)');
+    lines.push(String(ov['settingsGroundTruth']).slice(0, 6000));
+  }
+  lines.push('');
+  lines.push('Give 3 executive-summary findings (tags FIX / READ IT RIGHT / ' +
+      'WORTH A LOOK), then recommendations across settings, structure, creative, ' +
+      'landing pages, audiences, surfaces and measurement, then the single most ' +
+      'important move, then a one-line design direction for the deck.');
+  return lines.join('\n');
+}
+
+/** The strategy launch data plus context, as the user message. */
+function aiStrategyContext_(s) {
+  var lines = [];
+  lines.push('This account does NOT run Demand Gen yet. Analyze the launch data');
+  lines.push('below (mined from its non Demand Gen campaigns) and return a');
+  lines.push('structured Demand Gen launch recommendation.');
+  lines.push('');
+  try { lines.push(buildStrategyPrompt_(s)); } catch (e) {}
+  lines.push('');
+  lines.push('Frame the executive summary as the launch opportunity, and the ' +
+      'recommendations as who to target, which audiences to seed and exclude, ' +
+      'search themes, creative to produce or repurpose, the landing experience, ' +
+      'and the launch settings. Then the single most important launch move, then ' +
+      'a one-line design direction for the deck.');
+  return lines.join('\n');
+}
+
+/** Store AI analysis chunked, like the payload. */
+function saveAi_(id, obj) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) return;
+  var name = AI_PREFIX + digits_(id);
+  var sheet = ss.getSheetByName(name);
+  if (sheet) sheet.clear(); else sheet = ss.insertSheet(name);
+  var json = JSON.stringify(obj);
+  var chunks = [];
+  for (var i = 0; i < json.length; i += PAYLOAD_CHUNK) {
+    chunks.push([json.substring(i, i + PAYLOAD_CHUNK)]);
+  }
+  if (chunks.length) sheet.getRange(1, 1, chunks.length, 1).setValues(chunks);
+  try { sheet.hideSheet(); } catch (e) {}
+}
+
+/** Read stored AI analysis for an account, parsed, or null. */
+function readAi_(customerId) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) return null;
+  var sheet = ss.getSheetByName(AI_PREFIX + digits_(customerId));
+  if (!sheet || sheet.getLastRow() < 1) return null;
+  var raw = sheet.getRange(1, 1, sheet.getLastRow(), 1).getValues()
+      .map(function(row) { return row[0]; }).join('');
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (e) { return null; }
+}
+
+/** The stored AI analysis for an account as a prompt block, or ''. */
+function aiBlockForPrompt_(customerId) {
+  var a = null;
+  try { a = readAi_(customerId); } catch (e) { a = null; }
+  if (!a) return '';
+  var out = [];
+  out.push('## Lockhern AI analyst direction (authoritative, use it)');
+  out.push('');
+  out.push('A Lockhern strategist analysis of this exact account. Lead the deck ' +
+      'with these findings and recommendations; they carry our point of view and ' +
+      'are tied to the numbers. Do not contradict them.');
+  out.push('');
+  if ((a.executiveSummary || []).length) {
+    out.push('Executive summary the deck should open with:');
+    a.executiveSummary.forEach(function(f) {
+      out.push('- [' + f.tag + '] ' + f.stat + ' — ' + f.label + '. ' + f.detail);
+    });
+    out.push('');
+  }
+  if (a.oneThing) { out.push('The one thing that matters most: ' + a.oneThing); out.push(''); }
+  if ((a.recommendations || []).length) {
+    out.push('Recommendations by area (priority in brackets):');
+    a.recommendations.forEach(function(r) {
+      out.push('- [' + r.area + ', ' + r.priority + '] ' + r.title +
+          ' — ' + r.insight + ' Do: ' + r.action);
+    });
+    out.push('');
+  }
+  if (a.designDirection) {
+    out.push('Design direction: ' + a.designDirection);
+    out.push('');
+  }
+  return out.join('\n');
 }
 
 function buildBrief_(data) {
@@ -5215,8 +5526,43 @@ function deckForStrategy_(s) {
         T.ink);
   });
 
+  aiSlide_(deck, readAiSafe_(a.rawId), { W: W, H: H, M: M, T: T, box: box,
+      header: header });
+
   deck.saveAndClose();
   return deck.getUrl();
+}
+
+/** readAi_ that never throws, for the deck builders. */
+function readAiSafe_(customerId) {
+  try { return readAi_(customerId); } catch (e) { return null; }
+}
+
+/**
+ * One "AI recommendations" slide from the stored analysis, shared by both rough
+ * decks. ui carries the deck's own W/H/M/theme and box/header helpers.
+ */
+function aiSlide_(deck, ai, ui) {
+  if (!ai) return;
+  var W = ui.W, H = ui.H, M = ui.M, T = ui.T, box = ui.box;
+  var slide = deck.appendSlide(SlidesApp.PredefinedLayout.BLANK);
+  ui.header(slide, 'AI analyst recommendations',
+      ai.oneThing ? 'The one thing: ' + ai.oneThing : '');
+  var y = 100;
+  (ai.executiveSummary || []).slice(0, 3).forEach(function(f) {
+    box(slide, f.tag + '  ·  ' + f.stat + ' — ' + f.label, M, y, W - M * 2, 18,
+        11, true, T.ink);
+    box(slide, f.detail, M, y + 20, W - M * 2, 26, 9, false, T.muted);
+    y += 52;
+  });
+  y += 4;
+  (ai.recommendations || []).slice(0, 6).forEach(function(r) {
+    if (y > H - 30) return;
+    box(slide, '[' + r.area + ', ' + r.priority + '] ' + r.title, M, y,
+        W - M * 2, 16, 10, true, T.ink);
+    box(slide, r.action, M, y + 16, W - M * 2, 18, 9, false, T.muted);
+    y += 38;
+  });
 }
 
 function deckForAccount_(data) {
@@ -5933,6 +6279,13 @@ function deckForAccount_(data) {
   // Daily pacing and a standalone methodology-notes slide are intentionally
   // omitted: pacing is rarely the story, and the deck-design prompt folds the
   // two caveats that matter into footnotes on the slides where they apply.
+
+  // --- AI analyst recommendations ------------------------------------------
+  // If the analyst ran the AI analysis, drop its recommendations onto a slide.
+  section('AI recommendations', false, function() {
+    aiSlide_(deck, readAiSafe_(account.rawId), { W: W, H: H, M: M, T: T,
+        box: box, header: header });
+  });
 
   // --- brand assets (for the designer; removed in the branded rebuild) ------
   // If logos resolved from Drive, drop them onto a labelled final slide so the
