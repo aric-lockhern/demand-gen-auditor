@@ -107,6 +107,28 @@ file, shared with this account) and the build bundle includes it as
 `template-reference.pptx`; the prompt tells Claude to match it slide for slide so
 the output is the same deck every time, only the numbers changing.
 
+### Strategy mode: no Demand Gen yet
+
+When an account does not run Demand Gen, there is nothing to audit. **Strategy
+mode** instead mines the rest of the account (all non Demand Gen campaigns) for a
+**launch plan**. It is a per-account manual toggle in the dashboard under
+**Launch → Strategy mode**:
+
+- Tick **Strategy mode for this account** (persists per account).
+- **Build launch recommendation** runs live queries and surfaces: who already
+  buys (revenue by age and gender), the audiences and search themes that
+  convert, the best existing creative to repurpose, and where the account
+  converts today.
+- The result stores in a hidden `_strategy_<id>` sheet (chunked, like the
+  payload) and drives both the dashboard view and the launch-plan deck.
+
+With strategy mode on, the build bundle ships the **launch-plan prompt** instead
+of the audit prompt, and the rough Slides deck becomes a from-scratch **Demand
+Gen launch plan** (title, who to target, seed audiences, creative to repurpose,
+where to drive, the launch setup) rather than an audit. Backed by
+`buildStrategy`, `getStrategyData`, `setStrategyMode`, `buildStrategyPrompt_` and
+`deckForStrategy_`.
+
 ### The deck flow (guided wizard)
 
 The dashboard header has a four-step **Deck builder**:

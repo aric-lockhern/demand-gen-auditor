@@ -2955,8 +2955,234 @@ function buildDeckPrompt_(data) {
 function getDeckPrompt() {
   var accounts = cachedAccounts_();
   if (!accounts.length) return '';
-  var raw = readPayload_(accounts[0].id);
+  var id = accounts[0].id;
+  // Strategy mode ships the launch-plan prompt instead of the audit prompt.
+  if (readStrategyMode_(id)) {
+    var strat = readStrategy_(id);
+    if (strat) return buildStrategyPrompt_(strat);
+  }
+  var raw = readPayload_(id);
   return raw ? buildDeckPrompt_(JSON.parse(raw)) : '';
+}
+
+/** The launch-plan prompt for the lead account, for the dashboard copy button. */
+function getStrategyPrompt() {
+  var accounts = cachedAccounts_();
+  if (!accounts.length) return '';
+  var strat = readStrategy_(accounts[0].id);
+  return strat ? buildStrategyPrompt_(strat) : '';
+}
+
+/**
+ * The Demand Gen launch-plan deck prompt for a no-DG account. A separate, from-
+ * scratch format (there is no rough deck to redesign): it argues WHY the account
+ * is ready for Demand Gen and HOW to launch it, from the account's own signals.
+ */
+function buildStrategyPrompt_(s) {
+  var a = s.account || {};
+  var cur = a.currency || '';
+  var lines = [];
+  function push(line) { lines.push(line === undefined ? '' : String(line)); }
+  function money0(v) {
+    return cur + ' ' + Math.round(Number(v) || 0).toLocaleString();
+  }
+  function pct1(v) { return ((Number(v) || 0) * 100).toFixed(1) + '%'; }
+
+  push('Build a polished, client-ready Lockhern Digital DEMAND GEN LAUNCH PLAN');
+  push('deck for an account that does NOT run Demand Gen yet. There is no audit');
+  push('and no rough deck to redesign: build this from scratch as a designed,');
+  push('visual document that argues why this account is ready for Demand Gen and');
+  push('exactly how to launch it, using the account’s own signals below. Use a');
+  push('strong model (Opus).');
+  push('');
+  push('## Account');
+  push('');
+  push('- Account: ' + a.name + ' (' + a.id + ')');
+  push('- Window mined: ' + s.window.start + ' to ' + s.window.end);
+  push('- Currency: ' + cur + '. All signals below are from the account’s NON');
+  push('  Demand Gen campaigns (Search, Shopping, PMax, Display, Video).');
+  push('');
+  push('## Hard rules (read first)');
+  push('');
+  push('1. NEVER use an em dash or en dash anywhere. Use periods, commas, colons,');
+  push('   or a new line. A normal hyphen inside a word is fine.');
+  push('2. Every content slide is VISUAL: stat callouts, a chart, a comparison,');
+  push('   an icon-led list. Never a wall of numbers.');
+  push('3. Every content slide has one assertion title (a recommendation or a');
+  push('   finding) and one supporting line.');
+  push('4. This is a plan, not an audit. Frame everything as: the account already');
+  push('   proves X, so at launch we do Y. Do not report on Demand Gen results,');
+  push('   because there are none yet.');
+  push('5. Treat any screenshots or pasted notes the analyst attached as');
+  push('   authoritative and correct anything below that conflicts.');
+  push('');
+  push('## Our point of view. Carry this argument through the whole deck.');
+  push('');
+  push('The thesis: ' + POV.title + '.');
+  push('');
+  push(POV.thesis);
+  push('');
+  push('Principles the reader should leave with:');
+  POV.principles.forEach(function(pr) { push('- ' + pr); });
+  push('');
+  push('Judge the launch on the signals a purchase-only lens misses:');
+  POV.metrics.forEach(function(m) { push('- ' + m); });
+  push('');
+  push('Frame expectations plainly: ' + POV.expectation);
+  push('');
+  brandBlockForPrompt_(push);
+  push('## The launch-plan format. Build these slides, in this order.');
+  push('');
+  push('1. TITLE. Full-bleed primary blue ' + BRAND.primary + ' background, white');
+  push('   logo, white type: "DEMAND GEN LAUNCH PLAN", the account name, the');
+  push('   window, and the framing line "' + POV.title + '.".');
+  push('2. THE LENS. The same one-slide point-of-view framework: Demand Gen is a');
+  push('   social and creative channel judged on attention and mid-funnel signal,');
+  push('   not last-click. Three pillars (the channel, the levers, the signal)');
+  push('   plus the strip of signals we grade on. This sets why we are launching');
+  push('   and how we will judge it.');
+  push('3. THE OPPORTUNITY. Why this account is ready for Demand Gen now. Use the');
+  push('   demand the account already proves: existing conversion volume, who');
+  push('   buys, and the fact that all current spend is lower-funnel (Search and');
+  push('   friends) with no prospecting engine feeding it. State the gap Demand');
+  push('   Gen fills in one line, as stat callouts.');
+  push('4. WHO TO TARGET. The demographic target for launch, read from who already');
+  push('   buys in this account (the age and gender revenue table below). Turn it');
+  push('   into a clear "start here" recommendation: the two or three age bands');
+  push('   that carry the revenue, and the gender skew, as the Demand Gen');
+  push('   demographic starting point. A chart, not a table dump.');
+  push('5. SEED AUDIENCES. How we will seed the Demand Gen audience signal, from');
+  push('   the converting audiences and the converting search themes below. Map');
+  push('   each into a Demand Gen seed: remarketing and customer lists as the');
+  push('   warm seed, converting search themes as custom-intent or search-theme');
+  push('   audiences, and top interest or custom segments as the cold seed. Say');
+  push('   plainly to seed from watching behaviour and best organic content too.');
+  push('6. CREATIVE TO REPURPOSE. The best existing creative to adapt for Demand');
+  push('   Gen, from the top converting ads below, and the honest gap: Demand Gen');
+  push('   is YouTube, so it needs video built for a social feed. Recommend which');
+  push('   existing creative to cut for Shorts and in-feed, and what to shoot,');
+  push('   with the first three seconds as the priority.');
+  push('7. WHERE TO DRIVE. Where the account converts today (the landing pages');
+  push('   below) and the recommendation for Demand Gen: cold attention needs a');
+  push('   purpose-built destination, not a standard product page. Name the');
+  push('   primary KPI to test for this cold audience: a quiz, an email or SMS');
+  push('   capture, or a direct order, and tie it to the funnel stage.');
+  push('8. THE LAUNCH SETUP. The settings and structure we will set on day one,');
+  push('   as a checklist tied to the point of view: conversion goals with Add to');
+  push('   Cart and Begin Checkout set Primary and Purchase in its own custom');
+  push('   group, exclude existing purchasers from prospecting, turn on view-');
+  push('   through optimisation, seed the audience signal as above, and the budget');
+  push('   and test plan. State the KPI set and that this is not supposed to work');
+  push('   off the rip, so expectations are aligned before launch.');
+  push('9. THE FIRST 90 DAYS. Full-bleed primary blue closing slide, white logo.');
+  push('   The single most important launch move stated plainly, then the ordered');
+  push('   next steps, and the line that we judge the first 90 days on watch');
+  push('   depth, view-through, attributed brand search and cost per quiz, not on');
+  push('   last-click purchases alone.');
+  push('');
+  push('## Authoritative data. Use these exact numbers.');
+  push('');
+  function demoTable(label, rows) {
+    if (!rows || !rows.length) return;
+    push(label + ' (share of revenue, share of conversions, ROAS, cost per action):');
+    push('| Band | Revenue | Rev share | Conv | Conv share | ROAS | CPA |');
+    push('|---|---|---|---|---|---|---|');
+    rows.forEach(function(r) {
+      push('| ' + [r.band, money0(r.revenue), pct1(r.revShare),
+          (Number(r.conversions) || 0).toFixed(1), pct1(r.convShare),
+          (r.cost ? r.roas.toFixed(2) : 'n/a'),
+          (r.conversions ? money0(r.cpa) : 'n/a')].join(' | ') + ' |');
+    });
+    push('');
+  }
+  demoTable('Who buys, by age', (s.demographics || {}).age);
+  demoTable('Who buys, by gender', (s.demographics || {}).gender);
+
+  if ((s.audiences || []).length) {
+    push('Converting audiences to seed from (name, type, conversions, cost, CPA, ROAS):');
+    push('| Audience | Type | Conv | Cost | CPA | ROAS |');
+    push('|---|---|---|---|---|---|');
+    s.audiences.forEach(function(r) {
+      push('| ' + [String(r.name).slice(0, 48), r.type,
+          (Number(r.conversions) || 0).toFixed(1), money0(r.cost),
+          (r.conversions ? money0(r.cpa) : 'n/a'),
+          (r.cost ? r.roas.toFixed(2) : 'n/a')].join(' | ') + ' |');
+    });
+    push('');
+  }
+  if ((s.searchThemes || []).length) {
+    push('Top converting search themes to convert into custom-intent or search-theme audiences (term, conversions, cost, CPA):');
+    push('| Search term | Conv | Cost | CPA |');
+    push('|---|---|---|---|');
+    s.searchThemes.forEach(function(r) {
+      push('| ' + [String(r.term).slice(0, 60),
+          (Number(r.conversions) || 0).toFixed(1), money0(r.cost),
+          (r.conversions ? money0(r.cpa) : 'n/a')].join(' | ') + ' |');
+    });
+    push('');
+  }
+  if ((s.creative || []).length) {
+    push('Best existing creative to repurpose for Demand Gen (name, type, conversions, cost, CPA, destination):');
+    push('| Creative | Type | Conv | Cost | CPA | URL |');
+    push('|---|---|---|---|---|---|');
+    s.creative.forEach(function(r) {
+      push('| ' + [String(r.name || r.id).slice(0, 40), r.type,
+          (Number(r.conversions) || 0).toFixed(1), money0(r.cost),
+          (r.conversions ? money0(r.cpa) : 'n/a'),
+          String(r.url || '').slice(0, 50)].join(' | ') + ' |');
+    });
+    push('');
+  }
+  if ((s.landingPages || []).length) {
+    push('Where the account converts today (destination, conversions, cost, CPA, CVR). Review these to recommend the Demand Gen destination:');
+    push('| Destination | Conv | Cost | CPA | CVR |');
+    push('|---|---|---|---|---|');
+    s.landingPages.forEach(function(r) {
+      push('| ' + [String(r.url).replace(/^https?:\/\//, '').slice(0, 54),
+          (Number(r.conversions) || 0).toFixed(1), money0(r.cost),
+          (r.conversions ? money0(r.cpa) : 'n/a'), pct1(r.cvr)].join(' | ') + ' |');
+    });
+    push('');
+  }
+  push('## Constraints');
+  push('');
+  push('- Never invent Demand Gen results. Everything here is a plan built from');
+  push('  the account’s non Demand Gen signals.');
+  push('- Never change a number, label, or date unless a screenshot corrects it.');
+  push('- Build with pptxgenjs at LAYOUT_WIDE, or python-pptx. Return a new .pptx');
+  push('  and run the pptx validator, fixing whatever it flags.');
+  push('- Final check: search the whole deck for an em dash or en dash and remove');
+  push('  every one.');
+  push('');
+  push('Before you build, tell me in three sentences the demographic target, the');
+  push('seed-audience plan, and the primary launch KPI you chose. Then build it.');
+
+  return lines.join('\n');
+}
+
+/** The Lockhern brand system block, shared by the audit and strategy prompts. */
+function brandBlockForPrompt_(push) {
+  push('## Lockhern brand system');
+  push('');
+  push('Use only these colors:');
+  push('- Primary blue ' + BRAND.primary + ': the HERO colour. Full-bleed');
+  push('  background for the title, closing and any section-divider or statement');
+  push('  slides. Also headlines, key figures, and the single accent.');
+  push('- Secondary blue ' + BRAND.secondary + ': secondary chart series.');
+  push('- Tertiary navy ' + BRAND.tertiary + ': sparingly, small accents and text');
+  push('  contrast only. Not a background or large fill.');
+  push('- Ink ' + BRAND.ink + ': body text. Dark gray ' + BRAND.grayDark +
+       ': captions. Light gray ' + BRAND.grayLight + ': card fills and banding.');
+  push('- Status accents only where needed: green #1B7F5A, amber #C98A1B,');
+  push('  red #C24B3C.');
+  push('');
+  push('Type: ' + BRAND.titleFont + ' for titles, ' + BRAND.bodyFont +
+       ' for body and figures. Never a default font.');
+  push('Logo: the Lockhern logo on the title and closing slides (white version on');
+  push('the primary blue background) and a small mark on content slides. The logo');
+  push('files are attached (logo-*.png, and brand-logo-*.png if the analyst chose');
+  push('one for this deck). Reuse the files, do not redraw the logo.');
+  push('');
 }
 
 /**
@@ -3372,6 +3598,250 @@ function buildBrandComparison(customerId, idsCsv) {
 function readBrandComparison_(customerId) {
   var ov = readOverrides_();
   var raw = ov['brandCompareData::' + digits_(customerId)];
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (e) { return null; }
+}
+
+// ===========================================================================
+// STRATEGY MODE — no-Demand-Gen accounts (build a DG launch plan)
+// ===========================================================================
+//
+// When an account has no Demand Gen yet, there is nothing to audit. Strategy
+// mode instead mines the existing account (all NON Demand Gen campaigns) for the
+// signals a launch needs: who already buys (demographics), which audiences
+// convert, which search themes convert, which creative to repurpose, and where
+// the money currently lands. A per-account toggle turns it on; the dashboard
+// and a separate launch-plan deck consume the result.
+
+var STRATEGY_PREFIX = '_strategy_';
+
+/** Is strategy mode switched on for this account? Persisted per account. */
+function readStrategyMode_(customerId) {
+  var ov = readOverrides_();
+  return truthy_(ov['strategyMode::' + digits_(customerId)], false);
+}
+
+/** Turn strategy mode on or off for an account. Client-callable. */
+function setStrategyMode(customerId, on) {
+  saveOverride('strategyMode::' + digits_(customerId), on ? 'true' : '');
+  return { ok: true, on: !!on };
+}
+
+/** Per-band who-buys shares for the launch demographic target. */
+function whoBuys_(order, m) {
+  var revTotal = 0, costTotal = 0, convTotal = 0;
+  order.forEach(function(b) {
+    if (m[b]) { revTotal += m[b].revenue; costTotal += m[b].cost;
+                convTotal += m[b].conversions; }
+  });
+  return order.map(function(b) {
+    var x = m[b] || { cost: 0, revenue: 0, conversions: 0 };
+    return {
+      band: b,
+      revenue: x.revenue,
+      cost: x.cost,
+      conversions: x.conversions,
+      revShare: safeDiv_(x.revenue, revTotal),
+      convShare: safeDiv_(x.conversions, convTotal),
+      roas: safeDiv_(x.revenue, x.cost),
+      cpa: safeDiv_(x.cost, x.conversions)
+    };
+  }).filter(function(r) { return r.revenue || r.cost || r.conversions; });
+}
+
+/** Converting audiences across non-DG campaigns, names resolved, top by conv. */
+function strategyAudiences_(where, dateClause) {
+  var rows = gaql_('Strategy audiences', 'ad_group_audience_view',
+      ['ad_group_criterion.criterion_id', 'ad_group_criterion.type']
+          .concat(CORE_METRICS),
+      [ALL_CONV_METRICS,
+       ['ad_group_criterion.display_name'],
+       ['ad_group_criterion.audience.audience',
+        'ad_group_criterion.user_list.user_list'],
+       ['ad_group_criterion.user_interest.user_interest_category',
+        'ad_group_criterion.custom_audience.custom_audience',
+        'ad_group_criterion.detailed_demographic.detailed_demographic',
+        'ad_group_criterion.life_event.life_event']],
+      where + ' AND ' + dateClause, 'metrics.conversions DESC', 200);
+
+  var mapped = rows.map(function(r) {
+    var out = metricsOf_(r);
+    out.type = pretty_(get_(r, 'adGroupCriterion.type'));
+    out.name = get_(r, 'adGroupCriterion.displayName') || '';
+    out.ref =
+        get_(r, 'adGroupCriterion.audience.audience') ||
+        get_(r, 'adGroupCriterion.userList.userList') ||
+        get_(r, 'adGroupCriterion.userInterest.userInterestCategory') ||
+        get_(r, 'adGroupCriterion.customAudience.customAudience') ||
+        get_(r, 'adGroupCriterion.detailedDemographic.detailedDemographic') ||
+        get_(r, 'adGroupCriterion.lifeEvent.lifeEvent') || '';
+    return out;
+  }).filter(function(r) { return r.conversions > 0 || r.cost > 0; });
+
+  resolveAudienceNames_(mapped);
+  // Roll up by resolved name so the same list across ad groups reads as one.
+  var byName = {};
+  mapped.forEach(function(r) {
+    var key = (r.name || r.type) + '||' + r.type;
+    var a = byName[key] || (byName[key] = { name: r.name || r.type, type: r.type,
+        cost: 0, conversions: 0, convValue: 0 });
+    a.cost += r.cost; a.conversions += r.conversions; a.convValue += r.convValue;
+  });
+  return Object.keys(byName).map(function(k) {
+    var a = byName[k];
+    a.cpa = safeDiv_(a.cost, a.conversions);
+    a.roas = safeDiv_(a.convValue, a.cost);
+    return a;
+  }).sort(function(x, y) { return y.conversions - x.conversions; }).slice(0, 15);
+}
+
+/** Top converting search terms across non-DG search campaigns. */
+function strategySearchTerms_(dateClause) {
+  var rows = gaql_('Strategy search terms', 'search_term_view',
+      ['search_term_view.search_term']
+          .concat(['metrics.cost_micros', 'metrics.conversions',
+                   'metrics.conversions_value', 'metrics.clicks']),
+      [], "campaign.advertising_channel_type != 'DEMAND_GEN' AND " + dateClause,
+      'metrics.conversions DESC', 50);
+  return rows.map(function(r) {
+    var cost = micros_(get_(r, 'metrics.costMicros'));
+    var conv = num_(get_(r, 'metrics.conversions'));
+    return {
+      term: get_(r, 'searchTermView.searchTerm') || '',
+      cost: cost,
+      conversions: conv,
+      convValue: num_(get_(r, 'metrics.conversionsValue')),
+      cpa: safeDiv_(cost, conv)
+    };
+  }).filter(function(r) { return r.term && (r.conversions > 0 || r.cost > 0); })
+    .slice(0, 25);
+}
+
+/** Best existing creative to repurpose: top converting non-DG ads by type. */
+function strategyCreative_(where, dateClause) {
+  var rows = gaql_('Strategy creative', 'ad_group_ad',
+      ['ad_group_ad.ad.id', 'ad_group_ad.ad.type', 'campaign.name']
+          .concat(['metrics.impressions', 'metrics.clicks',
+                   'metrics.cost_micros', 'metrics.conversions',
+                   'metrics.conversions_value']),
+      [['ad_group_ad.ad.name'],
+       ['ad_group_ad.ad.final_urls']],
+      where + ' AND ' + dateClause, 'metrics.conversions DESC', 40);
+  return rows.map(function(r) {
+    var cost = micros_(get_(r, 'metrics.costMicros'));
+    var conv = num_(get_(r, 'metrics.conversions'));
+    var urls = get_(r, 'adGroupAd.ad.finalUrls');
+    return {
+      id: get_(r, 'adGroupAd.ad.id'),
+      name: get_(r, 'adGroupAd.ad.name') || '',
+      type: pretty_(get_(r, 'adGroupAd.ad.type')),
+      campaign: get_(r, 'campaign.name'),
+      impressions: num_(get_(r, 'metrics.impressions')),
+      cost: cost,
+      conversions: conv,
+      convValue: num_(get_(r, 'metrics.conversionsValue')),
+      cpa: safeDiv_(cost, conv),
+      url: (urls && urls.length) ? urls[0] : ''
+    };
+  }).filter(function(r) { return r.conversions > 0 || r.cost > 0; }).slice(0, 15);
+}
+
+/** Where the non-DG account converts, from landing_page_view. */
+function strategyLandingPages_(dateClause) {
+  var rows = gaql_('Strategy landing pages', 'landing_page_view',
+      ['landing_page_view.unexpanded_final_url']
+          .concat(['metrics.cost_micros', 'metrics.conversions',
+                   'metrics.conversions_value', 'metrics.clicks']),
+      [], "campaign.advertising_channel_type != 'DEMAND_GEN' AND " + dateClause,
+      'metrics.conversions DESC', 40);
+  var byUrl = {};
+  rows.forEach(function(r) {
+    var url = get_(r, 'landingPageView.unexpandedFinalUrl') || '';
+    if (!url) return;
+    var a = byUrl[url] || (byUrl[url] = { url: url, cost: 0, conversions: 0,
+        convValue: 0, clicks: 0 });
+    a.cost += micros_(get_(r, 'metrics.costMicros'));
+    a.conversions += num_(get_(r, 'metrics.conversions'));
+    a.convValue += num_(get_(r, 'metrics.conversionsValue'));
+    a.clicks += num_(get_(r, 'metrics.clicks'));
+  });
+  return Object.keys(byUrl).map(function(k) {
+    var a = byUrl[k];
+    a.cpa = safeDiv_(a.cost, a.conversions);
+    a.cvr = safeDiv_(a.conversions, a.clicks);
+    return a;
+  }).sort(function(x, y) { return y.conversions - x.conversions; }).slice(0, 15);
+}
+
+/**
+ * Mine the non-Demand-Gen account for a DG launch plan. Client-callable. Stores
+ * the result in a chunked _strategy_<id> sheet (too big for an override cell)
+ * and returns it. NOT DGEN filtered anywhere: the point is what the rest of the
+ * account already knows.
+ */
+function buildStrategy(customerId) {
+  try {
+    var id = ensureAccountContext_(customerId);
+    var range = buildDateRange_();
+    var where = "campaign.advertising_channel_type != 'DEMAND_GEN'";
+    var customer = pullCustomer_();
+    var demo = pullDemoRaw_('Strategy', where, range.current);
+    var result = {
+      account: { name: customer.name, id: formatId_(id), rawId: id,
+                 currency: customer.currency },
+      window: { start: range.start, end: range.end },
+      demographics: {
+        age: whoBuys_(AGE_BANDS, demo.age),
+        gender: whoBuys_(GENDER_BANDS, demo.gender)
+      },
+      audiences: strategyAudiences_(where, range.current),
+      searchThemes: strategySearchTerms_(range.current),
+      creative: strategyCreative_(where, range.current),
+      landingPages: strategyLandingPages_(range.current),
+      generated: Utilities.formatDate(new Date(),
+          customer.timeZone || 'America/New_York', 'MMM d, yyyy')
+    };
+    saveStrategy_(id, result);
+    return { ok: true, data: result };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e).slice(0, 300) };
+  }
+}
+
+/** Store strategy data chunked, like a payload, since it exceeds a cell cap. */
+function saveStrategy_(id, obj) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) return;
+  var name = STRATEGY_PREFIX + digits_(id);
+  var sheet = ss.getSheetByName(name);
+  if (sheet) sheet.clear(); else sheet = ss.insertSheet(name);
+  var json = JSON.stringify(obj);
+  var chunks = [];
+  for (var i = 0; i < json.length; i += PAYLOAD_CHUNK) {
+    chunks.push([json.substring(i, i + PAYLOAD_CHUNK)]);
+  }
+  if (chunks.length) sheet.getRange(1, 1, chunks.length, 1).setValues(chunks);
+  try { sheet.hideSheet(); } catch (e) {}
+}
+
+/** Client-callable: the stored launch-plan data for an account, or null. */
+function getStrategyData(customerId) {
+  try {
+    return { ok: true, data: readStrategy_(customerId),
+             on: readStrategyMode_(customerId) };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e).slice(0, 200) };
+  }
+}
+
+/** Read stored strategy data for an account, parsed, or null. */
+function readStrategy_(customerId) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) return null;
+  var sheet = ss.getSheetByName(STRATEGY_PREFIX + digits_(customerId));
+  if (!sheet || sheet.getLastRow() < 1) return null;
+  var raw = sheet.getRange(1, 1, sheet.getLastRow(), 1).getValues()
+      .map(function(row) { return row[0]; }).join('');
   if (!raw) return null;
   try { return JSON.parse(raw); } catch (e) { return null; }
 }
@@ -4192,6 +4662,11 @@ function buildDeck() {
 
   var urls = [];
   accounts.forEach(function(account) {
+    // Strategy-mode accounts get the launch-plan deck instead of the audit.
+    if (readStrategyMode_(account.id)) {
+      var strat = readStrategy_(account.id);
+      if (strat) { urls.push(deckForStrategy_(strat)); return; }
+    }
     var raw = readPayload_(account.id);
     if (!raw) return;
     urls.push(deckForAccount_(JSON.parse(raw)));
@@ -4258,6 +4733,144 @@ function setupCommentary() {
 
   Logger.log('Commentary tab ready. Fill column B, then run buildDeck.');
   return 'ok';
+}
+
+/**
+ * A compact rough Slides deck for a no-Demand-Gen account: the launch plan from
+ * the mined signals. Self-contained so it never depends on the audit builder.
+ * The branded rebuild uses the same data through buildStrategyPrompt_.
+ */
+function deckForStrategy_(s) {
+  applyBrandLogos_();
+  var T = DECK.THEME;
+  var W = 720, H = 405, M = 44;
+  var a = s.account || {};
+  var cur = a.currency || '';
+  var deck = SlidesApp.create('Demand Gen launch plan — ' + a.name);
+
+  function money(v) {
+    return cur + ' ' + Math.round(Number(v) || 0).toLocaleString();
+  }
+  function dec(v) { return (Number(v) || 0).toFixed(1); }
+  function pct0(v) { return Math.round((Number(v) || 0) * 100) + '%'; }
+
+  function box(slide, text, left, top, width, height, size, bold, color, font) {
+    var shape = slide.insertTextBox(String(text), left, top, width, height);
+    var style = shape.getText().getTextStyle();
+    style.setFontSize(size).setBold(!!bold).setForegroundColor(color || T.ink);
+    try { style.setFontFamily(font || T.bodyFont); } catch (e) {}
+    return shape;
+  }
+  function rule(slide, top) {
+    var line = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, M, top,
+        W - M * 2, 1.5);
+    line.getFill().setSolidFill(T.accent);
+    line.getBorder().setTransparent();
+  }
+  function header(slide, title, sub) {
+    box(slide, title, M, 30, W - M * 2, 30, 20, true, T.ink, T.titleFont);
+    rule(slide, 64);
+    if (sub) box(slide, sub, M, 70, W - M * 2, 18, 10, false, T.muted);
+  }
+  function tableSlide(title, sub, headers, rows) {
+    if (!rows.length) return;
+    var slide = deck.appendSlide(SlidesApp.PredefinedLayout.BLANK);
+    header(slide, title, sub);
+    var capped = rows.slice(0, DECK.ROWS_PER_TABLE);
+    var top = 96;
+    var height = Math.min(H - top - 20, 24 + capped.length * 22);
+    var table = slide.insertTable(capped.length + 1, headers.length, M, top,
+        W - M * 2, height);
+    headers.forEach(function(h, c) {
+      var cell = table.getCell(0, c);
+      cell.getText().setText(String(h));
+      cell.getText().getTextStyle().setFontSize(9).setBold(true)
+          .setForegroundColor(T.muted);
+    });
+    capped.forEach(function(row, r) {
+      row.forEach(function(value, c) {
+        var cell = table.getCell(r + 1, c);
+        cell.getText().setText(String(value));
+        cell.getText().getTextStyle().setFontSize(10).setForegroundColor(T.ink);
+      });
+    });
+  }
+
+  // Title (blue).
+  var first = deck.getSlides()[0];
+  first.getPageElements().forEach(function(e) { e.remove(); });
+  var bg = first.insertShape(SlidesApp.ShapeType.RECTANGLE, 0, 0, W, H);
+  bg.getFill().setSolidFill(BRAND.primary);
+  bg.getBorder().setTransparent();
+  box(first, 'DEMAND GEN LAUNCH PLAN', M, 150, W - M * 2, 24, 13, false,
+      BRAND.white);
+  box(first, a.name, M, 178, W - M * 2, 54, 32, true, BRAND.white, T.titleFont);
+  box(first, s.window.start + ' to ' + s.window.end + '   ·   ' + a.id,
+      M, 240, W - M * 2, 22, 12, false, BRAND.white);
+  box(first, POV.title + '.', M, 300, W - M * 2, 40, 14, false, BRAND.white,
+      T.titleFont);
+
+  tableSlide('Who to target', 'Who already buys in this account, by age. The ' +
+      'Demand Gen demographic starting point.',
+    ['Age', 'Revenue', 'Rev share', 'Conv', 'ROAS'],
+    ((s.demographics || {}).age || []).map(function(r) {
+      return [r.band, money(r.revenue), pct0(r.revShare), dec(r.conversions),
+              r.cost ? r.roas.toFixed(2) : '—'];
+    }));
+
+  tableSlide('Seed audiences: converting segments',
+      'Existing audiences that convert. Seed the Demand Gen signal from these.',
+    ['Audience', 'Type', 'Conv', 'Cost', 'CPA'],
+    (s.audiences || []).map(function(r) {
+      return [String(r.name).slice(0, 40), r.type, dec(r.conversions),
+              money(r.cost), r.conversions ? money(r.cpa) : '—'];
+    }));
+
+  tableSlide('Seed audiences: converting search themes',
+      'Top converting search terms, to seed custom-intent or search-theme audiences.',
+    ['Search term', 'Conv', 'Cost', 'CPA'],
+    (s.searchThemes || []).map(function(r) {
+      return [String(r.term).slice(0, 48), dec(r.conversions), money(r.cost),
+              r.conversions ? money(r.cpa) : '—'];
+    }));
+
+  tableSlide('Creative to repurpose',
+      'Best existing creative. Demand Gen needs video for a social feed, so adapt these.',
+    ['Creative', 'Type', 'Conv', 'Cost', 'CPA'],
+    (s.creative || []).map(function(r) {
+      return [String(r.name || r.id).slice(0, 40), r.type, dec(r.conversions),
+              money(r.cost), r.conversions ? money(r.cpa) : '—'];
+    }));
+
+  tableSlide('Where to drive',
+      'Where the account converts today. Recommend a purpose-built Demand Gen page.',
+    ['Destination', 'Conv', 'Cost', 'CPA'],
+    (s.landingPages || []).map(function(r) {
+      return [String(r.url).replace(/^https?:\/\//, '').slice(0, 48),
+              dec(r.conversions), money(r.cost),
+              r.conversions ? money(r.cpa) : '—'];
+    }));
+
+  // Launch setup checklist.
+  var setup = deck.appendSlide(SlidesApp.PredefinedLayout.BLANK);
+  header(setup, 'The launch setup', 'What we set on day one, through the lens.');
+  [
+    'Conversion goals: set Add to Cart and Begin Checkout to Primary, keep ' +
+      'Purchase in its own custom goal group.',
+    'Exclude existing purchasers from prospecting, so budget reaches new demand.',
+    'Turn on view-through conversion optimisation: it is the signal we value ' +
+      'most and it is off by default.',
+    'Seed the audience signal from the converting lists, search themes and ' +
+      'watch behaviour above.',
+    'Agree the KPI set and expectations first. This is not supposed to work off ' +
+      'the rip.'
+  ].forEach(function(t, i) {
+    box(setup, (i + 1) + '.  ' + t, M, 104 + i * 46, W - M * 2, 42, 12, false,
+        T.ink);
+  });
+
+  deck.saveAndClose();
+  return deck.getUrl();
 }
 
 function deckForAccount_(data) {

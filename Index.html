@@ -2125,6 +2125,179 @@ function runCompare() {
     .buildBrandComparison(CURRENT_ACCOUNT, idsCsv);
 }
 
+// ---------------------------------------------------------------------------
+// Strategy mode — no-Demand-Gen accounts (build a DG launch plan)
+// ---------------------------------------------------------------------------
+var STRATEGY_MODE = !!ovrGet('strategyMode::' + CURRENT_ACCOUNT);
+var STRATEGY_DATA = null;      // Loaded lazily from the server (_strategy_ sheet).
+var STRATEGY_LOADED = false;   // So we only auto-fetch once per view open.
+
+function drawStrategy() {
+  document.getElementById('count').textContent =
+      STRATEGY_MODE ? (STRATEGY_DATA ? 'launch plan ready' : 'no plan yet')
+                    : 'off';
+  var intro = '<div class="rb-sub" style="margin:0 0 14px">For an account that ' +
+    'does not run Demand Gen yet. Strategy mode mines the rest of the account ' +
+    '(all non Demand Gen campaigns) for a launch plan: who already buys, which ' +
+    'audiences and search themes convert, which creative to repurpose, and where ' +
+    'the money lands. Turn it on for this client, then build the recommendation.' +
+    '</div>';
+
+  var toggle = '<div style="border:1px solid var(--rule);background:var(--card);' +
+    'border-radius:12px;padding:16px;margin-bottom:16px">' +
+    '<label style="display:flex;align-items:center;gap:10px;font-size:14px;' +
+    'font-weight:600"><input type="checkbox" id="stratToggle"' +
+    (STRATEGY_MODE ? ' checked' : '') + '> Strategy mode for this account</label>' +
+    '<p class="meta" style="margin:8px 0 0">When on, the build bundle ships the ' +
+    'launch-plan prompt (not the audit prompt), and the deck becomes a Demand ' +
+    'Gen launch plan.</p></div>';
+
+  if (!STRATEGY_MODE) return intro + toggle;
+
+  var action = '<div style="margin-bottom:16px">' +
+    '<button class="briefbtn" id="stratBuild" style="border-color:var(--accent);' +
+    'color:var(--accent);font-weight:600">' +
+    (STRATEGY_DATA ? 'Rebuild launch recommendation' : 'Build launch recommendation') +
+    '</button><span id="stratStatus" class="ovr-state" style="margin-left:10px">' +
+    '</span></div>';
+
+  var body = STRATEGY_DATA ? drawStrategyData(STRATEGY_DATA)
+    : '<div class="empty">No launch recommendation yet. Click Build to mine the ' +
+      'account. This runs several live queries.</div>';
+  return intro + toggle + action + body;
+}
+
+function drawStrategyData(s) {
+  var out = '<div class="meta" style="margin:0 0 12px">Mined ' +
+    esc(s.window.start) + ' to ' + esc(s.window.end) + ' from non Demand Gen ' +
+    'campaigns.</div>';
+
+  out += stratWhoBuys('Who buys, by age', (s.demographics || {}).age);
+  out += stratWhoBuys('Who buys, by gender', (s.demographics || {}).gender);
+
+  if ((s.audiences || []).length) {
+    out += '<div class="subhead">Converting audiences to seed from</div>' +
+      '<div class="scroll"><table><thead><tr><th>Audience</th><th>Type</th>' +
+      '<th>Conv</th><th>Cost</th><th>CPA</th><th>ROAS</th></tr></thead><tbody>' +
+      s.audiences.map(function(r) {
+        return '<tr><td class="name"><strong>' + esc(r.name) + '</strong></td>' +
+          '<td>' + esc(r.type) + '</td>' +
+          '<td class="num">' + dec(r.conversions) + '</td>' +
+          '<td class="num">' + money(r.cost) + '</td>' +
+          '<td class="num">' + (r.conversions ? money(r.cpa) : '—') + '</td>' +
+          '<td class="num">' + (r.cost ? r.roas.toFixed(2) : '—') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+  if ((s.searchThemes || []).length) {
+    out += '<div class="subhead">Converting search themes (seed as custom-intent ' +
+      'or search-theme audiences)</div>' +
+      '<div class="scroll"><table><thead><tr><th>Search term</th><th>Conv</th>' +
+      '<th>Cost</th><th>CPA</th></tr></thead><tbody>' +
+      s.searchThemes.map(function(r) {
+        return '<tr><td class="name">' + esc(r.term) + '</td>' +
+          '<td class="num">' + dec(r.conversions) + '</td>' +
+          '<td class="num">' + money(r.cost) + '</td>' +
+          '<td class="num">' + (r.conversions ? money(r.cpa) : '—') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+  if ((s.creative || []).length) {
+    out += '<div class="subhead">Best existing creative to repurpose</div>' +
+      '<div class="scroll"><table><thead><tr><th>Creative</th><th>Type</th>' +
+      '<th>Conv</th><th>Cost</th><th>CPA</th></tr></thead><tbody>' +
+      s.creative.map(function(r) {
+        var nm = r.url
+          ? '<a href="' + esc(r.url) + '" target="_blank" rel="noopener">' +
+            esc(r.name || r.id) + '</a>'
+          : esc(r.name || r.id);
+        return '<tr><td class="name">' + nm + '</td>' +
+          '<td>' + esc(r.type) + '</td>' +
+          '<td class="num">' + dec(r.conversions) + '</td>' +
+          '<td class="num">' + money(r.cost) + '</td>' +
+          '<td class="num">' + (r.conversions ? money(r.cpa) : '—') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+  if ((s.landingPages || []).length) {
+    out += '<div class="subhead">Where the account converts today</div>' +
+      '<div class="scroll"><table><thead><tr><th>Destination</th><th>Conv</th>' +
+      '<th>Cost</th><th>CPA</th><th>CVR</th></tr></thead><tbody>' +
+      s.landingPages.map(function(r) {
+        var short = String(r.url).replace(/^https?:\/\//, '');
+        return '<tr><td class="name"><a href="' + esc(r.url) + '" target="_blank" ' +
+          'rel="noopener">' + esc(short) + '</a></td>' +
+          '<td class="num">' + dec(r.conversions) + '</td>' +
+          '<td class="num">' + money(r.cost) + '</td>' +
+          '<td class="num">' + (r.conversions ? money(r.cpa) : '—') + '</td>' +
+          '<td class="num">' + pct(r.cvr) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+  return out;
+}
+
+function stratWhoBuys(header, rows) {
+  if (!rows || !rows.length) return '';
+  var body = rows.map(function(r) {
+    return '<tr><td class="name"><strong>' + esc(r.band) + '</strong></td>' +
+      '<td class="num">' + money(r.revenue) + '<span class="meta">' +
+        pct0(r.revShare) + ' of rev</span></td>' +
+      '<td class="num">' + dec(r.conversions) + '<span class="meta">' +
+        pct0(r.convShare) + ' of conv</span></td>' +
+      '<td class="num">' + (r.cost ? r.roas.toFixed(2) : '—') + '</td>' +
+      '<td class="num">' + (r.conversions ? money(r.cpa) : '—') + '</td></tr>';
+  }).join('');
+  return '<div class="subhead">' + esc(header) + '</div>' +
+    '<div class="scroll"><table><thead><tr><th>' + esc(header.split(', ')[1] ||
+    'Band') + '</th><th>Revenue</th><th>Conversions</th><th>ROAS</th><th>CPA</th>' +
+    '</tr></thead><tbody>' + body + '</tbody></table></div>';
+}
+
+function bindStrategy() {
+  var toggle = document.getElementById('stratToggle');
+  if (toggle) toggle.onchange = function() {
+    STRATEGY_MODE = this.checked;
+    if (STRATEGY_MODE) OVERRIDES['strategyMode::' + CURRENT_ACCOUNT] = 'true';
+    else delete OVERRIDES['strategyMode::' + CURRENT_ACCOUNT];
+    if (window.google && google.script && google.script.run) {
+      google.script.run.setStrategyMode(CURRENT_ACCOUNT, STRATEGY_MODE);
+    }
+    render();
+  };
+  var buildBtn = document.getElementById('stratBuild');
+  if (buildBtn) buildBtn.onclick = buildStrategyReco;
+  // Auto-load a previously built plan the first time the view opens.
+  if (STRATEGY_MODE && !STRATEGY_LOADED && !STRATEGY_DATA) {
+    STRATEGY_LOADED = true;
+    if (window.google && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res && res.ok && res.data) { STRATEGY_DATA = res.data; render(); }
+        })
+        .withFailureHandler(function() {})
+        .getStrategyData(CURRENT_ACCOUNT);
+    }
+  }
+}
+
+function buildStrategyReco() {
+  var status = document.getElementById('stratStatus');
+  if (!(window.google && google.script && google.script.run)) {
+    avState(status, 'preview only', 'var(--down)'); return;
+  }
+  avState(status, 'mining the account… (live queries)', 'var(--muted)');
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.ok) {
+        avState(status, (res && res.error) || 'failed', 'var(--down)'); return;
+      }
+      STRATEGY_DATA = res.data;
+      avState(status, 'done', 'var(--up)');
+      render();
+    })
+    .withFailureHandler(function(e) {
+      avState(status, String((e && e.message) || 'failed'), 'var(--down)');
+    })
+    .buildStrategy(CURRENT_ACCOUNT);
+}
+
 function drawLandingPages() {
   var rows = DATA.landingPages || [];
   document.getElementById('count').textContent = rows.length + ' destinations';
@@ -2335,6 +2508,8 @@ var VIEWS = {
     rows: function() { return DATA.landingPages || []; } },
   audienceValidation: { label: 'Audience validation', custom: true,
     rows: function() { return (BRAND_COMPARE && BRAND_COMPARE.age) || []; } },
+  strategy: { label: 'Strategy mode', custom: true,
+    rows: function() { return (STRATEGY_DATA && STRATEGY_DATA.audiences) || []; } },
   settings: { label: 'Settings', custom: true,
     rows: function() { return ((DATA.settings || {}).campaigns) || []; } },
   conversions: { label: 'Conversions', custom: true,
@@ -2425,7 +2600,8 @@ var GROUPS = [
   { label: 'Placement', views: ['surfaces', 'landingPages', 'placements'] },
   { label: 'Audience', views: ['audiences', 'demographics', 'audienceValidation'] },
   { label: 'Structure', views: ['campaigns', 'adGroups', 'settings'] },
-  { label: 'Outcomes', views: ['conversions', 'daily'] }
+  { label: 'Outcomes', views: ['conversions', 'daily'] },
+  { label: 'Launch', views: ['strategy'] }
 ];
 
 function groupOf(viewId) {
@@ -2737,6 +2913,12 @@ function render() {
   if (ACTIVE === 'audienceValidation') {
     panel.innerHTML = drawAudienceValidation();
     bindAudienceValidation();
+    return;
+  }
+
+  if (ACTIVE === 'strategy') {
+    panel.innerHTML = drawStrategy();
+    bindStrategy();
     return;
   }
 
