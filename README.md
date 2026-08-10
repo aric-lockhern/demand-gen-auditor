@@ -115,10 +115,18 @@ mode** instead mines the rest of the account (all non Demand Gen campaigns) for 
 **Launch → Strategy mode**:
 
 - Tick **Strategy mode for this account** (persists per account).
-- **Build launch recommendation** runs live queries and surfaces: who already
-  buys (revenue by age and gender), the audiences and search themes that
-  convert, the best existing creative to repurpose, and where the account
-  converts today.
+- **Build launch recommendation** runs live queries and surfaces:
+  - **who already buys** (revenue by age and gender),
+  - the **full audience list inventory** (every remarketing and customer-match
+    list, flagged for likely purchasers/customers to exclude and lists to seed
+    from, with sizes), plus the audiences already converting,
+  - converting **search themes** to seed custom-intent audiences,
+  - the **conversion actions** the account tracks (what DG can optimise toward,
+    and any missing mid-funnel action),
+  - the **creative inventory** (how many YouTube video assets exist, i.e. the
+    DG creative gap) and the best existing ads to repurpose,
+  - where the account **converts today** (landing pages), and the current
+    **channel mix** and **device split**.
 - The result stores in a hidden `_strategy_<id>` sheet (chunked, like the
   payload) and drives both the dashboard view and the launch-plan deck.
 

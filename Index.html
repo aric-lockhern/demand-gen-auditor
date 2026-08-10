@@ -2175,8 +2175,28 @@ function drawStrategyData(s) {
   out += stratWhoBuys('Who buys, by age', (s.demographics || {}).age);
   out += stratWhoBuys('Who buys, by gender', (s.demographics || {}).gender);
 
+  if ((s.audienceLists || []).length) {
+    out += '<div class="subhead">Audience list inventory (seed vs exclude)</div>' +
+      '<div class="rb-sub" style="margin:0 0 8px">Every list in the account. ' +
+      '"Customers / purchasers" lists are what you exclude from prospecting; the ' +
+      'rest are seed candidates.</div>' +
+      '<div class="scroll"><table><thead><tr><th>List</th><th>Type</th>' +
+      '<th>Role</th><th>Display size</th><th>Search size</th><th>Status</th>' +
+      '</tr></thead><tbody>' +
+      s.audienceLists.map(function(r) {
+        var flag = /purchaser|customer/i.test(r.role)
+          ? ' style="color:var(--down);font-weight:600"' : '';
+        return '<tr><td class="name"><strong>' + esc(r.name) + '</strong></td>' +
+          '<td>' + esc(r.type) + '</td>' +
+          '<td' + flag + '>' + esc(r.role) + '</td>' +
+          '<td class="num">' + int(r.sizeDisplay) + '</td>' +
+          '<td class="num">' + int(r.sizeSearch) + '</td>' +
+          '<td>' + esc(r.status) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+
   if ((s.audiences || []).length) {
-    out += '<div class="subhead">Converting audiences to seed from</div>' +
+    out += '<div class="subhead">Converting audiences already in use</div>' +
       '<div class="scroll"><table><thead><tr><th>Audience</th><th>Type</th>' +
       '<th>Conv</th><th>Cost</th><th>CPA</th><th>ROAS</th></tr></thead><tbody>' +
       s.audiences.map(function(r) {
@@ -2200,8 +2220,39 @@ function drawStrategyData(s) {
           '<td class="num">' + (r.conversions ? money(r.cpa) : '—') + '</td></tr>';
       }).join('') + '</tbody></table></div>';
   }
+  if ((s.conversionActions || []).length) {
+    out += '<div class="subhead">Conversion actions the account tracks</div>' +
+      '<div class="scroll"><table><thead><tr><th>Action</th><th>Category</th>' +
+      '<th>Primary</th><th>Counting</th></tr></thead><tbody>' +
+      s.conversionActions.map(function(r) {
+        return '<tr><td class="name"><strong>' + esc(r.name) + '</strong></td>' +
+          '<td>' + esc(r.category) + '</td>' +
+          '<td>' + (r.primary ? 'yes' : 'no') + '</td>' +
+          '<td>' + esc(r.counting) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+  var inv = s.assetInventory || {};
+  if (inv.videoCount !== undefined) {
+    var gap = (inv.videoCount || 0) < 3;
+    out += '<div class="subhead">Existing creative inventory</div>' +
+      '<div class="rb-sub" style="margin:0 0 8px"' +
+      (gap ? ' style="color:var(--down)"' : '') + '><strong>' +
+      (inv.videoCount || 0) + '</strong> YouTube video asset(s), <strong>' +
+      (inv.imageCount || 0) + '</strong> image asset(s). ' +
+      (gap ? 'Little or no video: producing video is a launch prerequisite for ' +
+        'Demand Gen (it is YouTube).' : 'There is existing video to cut for ' +
+        'Shorts and in-feed.') + '</div>';
+    if ((inv.videos || []).length) {
+      out += '<div class="scroll"><table><thead><tr><th>Video asset</th><th>Link</th>' +
+        '</tr></thead><tbody>' + inv.videos.map(function(v) {
+          return '<tr><td class="name">' + esc(v.name) + '</td><td>' +
+            (v.url ? '<a href="' + esc(v.url) + '" target="_blank" ' +
+              'rel="noopener">Open</a>' : '—') + '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+    }
+  }
   if ((s.creative || []).length) {
-    out += '<div class="subhead">Best existing creative to repurpose</div>' +
+    out += '<div class="subhead">Best existing ads to repurpose</div>' +
       '<div class="scroll"><table><thead><tr><th>Creative</th><th>Type</th>' +
       '<th>Conv</th><th>Cost</th><th>CPA</th></tr></thead><tbody>' +
       s.creative.map(function(r) {
@@ -2228,6 +2279,29 @@ function drawStrategyData(s) {
           '<td class="num">' + money(r.cost) + '</td>' +
           '<td class="num">' + (r.conversions ? money(r.cpa) : '—') + '</td>' +
           '<td class="num">' + pct(r.cvr) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+  if ((s.channelMix || []).length) {
+    out += '<div class="subhead">Current channel mix (non Demand Gen)</div>' +
+      '<div class="scroll"><table><thead><tr><th>Channel</th><th>Spend</th>' +
+      '<th>Conv</th><th>CPA</th><th>ROAS</th></tr></thead><tbody>' +
+      s.channelMix.map(function(r) {
+        return '<tr><td class="name"><strong>' + esc(r.channel) + '</strong></td>' +
+          '<td class="num">' + money(r.cost) + '</td>' +
+          '<td class="num">' + dec(r.conversions) + '</td>' +
+          '<td class="num">' + (r.conversions ? money(r.cpa) : '—') + '</td>' +
+          '<td class="num">' + (r.cost ? r.roas.toFixed(2) : '—') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+  if ((s.devices || []).length) {
+    out += '<div class="subhead">Device split (non Demand Gen)</div>' +
+      '<div class="scroll"><table><thead><tr><th>Device</th><th>Spend</th>' +
+      '<th>Conv</th><th>CPA</th></tr></thead><tbody>' +
+      s.devices.map(function(r) {
+        return '<tr><td class="name"><strong>' + esc(r.device) + '</strong></td>' +
+          '<td class="num">' + money(r.cost) + '</td>' +
+          '<td class="num">' + dec(r.conversions) + '</td>' +
+          '<td class="num">' + (r.conversions ? money(r.cpa) : '—') + '</td></tr>';
       }).join('') + '</tbody></table></div>';
   }
   return out;

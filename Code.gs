@@ -3068,29 +3068,42 @@ function buildStrategyPrompt_(s) {
   push('   into a clear "start here" recommendation: the two or three age bands');
   push('   that carry the revenue, and the gender skew, as the Demand Gen');
   push('   demographic starting point. A chart, not a table dump.');
-  push('5. SEED AUDIENCES. How we will seed the Demand Gen audience signal, from');
-  push('   the converting audiences and the converting search themes below. Map');
-  push('   each into a Demand Gen seed: remarketing and customer lists as the');
-  push('   warm seed, converting search themes as custom-intent or search-theme');
-  push('   audiences, and top interest or custom segments as the cold seed. Say');
-  push('   plainly to seed from watching behaviour and best organic content too.');
+  push('5. AUDIENCE ASSETS: SEED AND EXCLUDE. The account’s existing audience');
+  push('   lists (the full inventory below, not only the ones in use). Split them');
+  push('   into two columns: SEED FROM (warm remarketing and customer-match lists,');
+  push('   cart and checkout lists, lead and subscriber lists, best interest or');
+  push('   custom segments) and EXCLUDE (existing purchasers and customers, so');
+  push('   prospecting budget reaches new demand). Call out explicitly whether a');
+  push('   purchasers or customers list exists to exclude, and whether a customer-');
+  push('   match list exists to build a lookalike seed from. If no such lists');
+  push('   exist, say so and recommend building them before launch. Then add the');
+  push('   converting search themes below as custom-intent or search-theme');
+  push('   audiences, and say to seed from watching behaviour and best organic');
+  push('   TikTok and Meta content too. This is the slide the client cares about');
+  push('   most, so make the seed-vs-exclude call concrete.');
   push('6. CREATIVE TO REPURPOSE. The best existing creative to adapt for Demand');
-  push('   Gen, from the top converting ads below, and the honest gap: Demand Gen');
-  push('   is YouTube, so it needs video built for a social feed. Recommend which');
-  push('   existing creative to cut for Shorts and in-feed, and what to shoot,');
-  push('   with the first three seconds as the priority.');
+  push('   Gen, from the top converting ads below, AND the honest creative-');
+  push('   inventory gap: Demand Gen is YouTube, so it needs video. State how many');
+  push('   YouTube video assets the account already has (from the inventory below):');
+  push('   if few or none, the headline is that video must be produced before');
+  push('   launch. Recommend which existing creative to cut for Shorts and in-');
+  push('   feed, and what to shoot, with the first three seconds as the priority.');
   push('7. WHERE TO DRIVE. Where the account converts today (the landing pages');
   push('   below) and the recommendation for Demand Gen: cold attention needs a');
   push('   purpose-built destination, not a standard product page. Name the');
   push('   primary KPI to test for this cold audience: a quiz, an email or SMS');
   push('   capture, or a direct order, and tie it to the funnel stage.');
   push('8. THE LAUNCH SETUP. The settings and structure we will set on day one,');
-  push('   as a checklist tied to the point of view: conversion goals with Add to');
-  push('   Cart and Begin Checkout set Primary and Purchase in its own custom');
-  push('   group, exclude existing purchasers from prospecting, turn on view-');
-  push('   through optimisation, seed the audience signal as above, and the budget');
-  push('   and test plan. State the KPI set and that this is not supposed to work');
-  push('   off the rip, so expectations are aligned before launch.');
+  push('   as a checklist tied to the point of view. Read the conversion actions');
+  push('   the account already tracks (below): recommend which to set Primary for');
+  push('   Demand Gen (favour mid-funnel actions like Add to Cart and Begin');
+  push('   Checkout, keep Purchase in its own custom goal group), and flag any');
+  push('   missing mid-funnel action to create. Also: exclude existing purchasers');
+  push('   from prospecting, turn on view-through optimisation, seed the audience');
+  push('   signal as on slide 5, and the budget and test plan. Note the current');
+  push('   channel mix and device split below to set the Demand Gen expectation');
+  push('   (mobile and YouTube heavy). State the KPI set and that this is not');
+  push('   supposed to work off the rip, so expectations are aligned before launch.');
   push('9. THE FIRST 90 DAYS. Full-bleed primary blue closing slide, white logo.');
   push('   The single most important launch move stated plainly, then the ordered');
   push('   next steps, and the line that we judge the first 90 days on watch');
@@ -3115,8 +3128,29 @@ function buildStrategyPrompt_(s) {
   demoTable('Who buys, by age', (s.demographics || {}).age);
   demoTable('Who buys, by gender', (s.demographics || {}).gender);
 
+  if ((s.audienceLists || []).length) {
+    push('Audience list inventory (every list in the account, whether or not it ' +
+        'is in use). "Role" is our read of what the list is, for the seed-vs-' +
+        'exclude split. Sizes are Google’s Display and Search network estimates ' +
+        '(0 or low often means too small to target):');
+    push('| List | Type | Role | Display size | Search size | Status |');
+    push('|---|---|---|---|---|---|');
+    s.audienceLists.forEach(function(r) {
+      push('| ' + [String(r.name).slice(0, 44), r.type, r.role,
+          Math.round(r.sizeDisplay || 0), Math.round(r.sizeSearch || 0),
+          r.status].join(' | ') + ' |');
+    });
+    push('');
+  } else {
+    push('Audience list inventory: none returned. The account has no reusable ' +
+        'remarketing or customer-match lists, so recommend building them (a ' +
+        'purchasers list to exclude, a customer-match list to seed a lookalike) ' +
+        'before or at launch.');
+    push('');
+  }
+
   if ((s.audiences || []).length) {
-    push('Converting audiences to seed from (name, type, conversions, cost, CPA, ROAS):');
+    push('Converting audiences already in use (name, type, conversions, cost, CPA, ROAS):');
     push('| Audience | Type | Conv | Cost | CPA | ROAS |');
     push('|---|---|---|---|---|---|');
     s.audiences.forEach(function(r) {
@@ -3138,8 +3172,38 @@ function buildStrategyPrompt_(s) {
     });
     push('');
   }
+  if ((s.conversionActions || []).length) {
+    push('Conversion actions the account tracks (name, category, primary for its ' +
+        'goal, counting). Recommend which Demand Gen should optimise toward, and ' +
+        'flag any missing mid-funnel action (Add to Cart, Begin Checkout, quiz, ' +
+        'email or SMS submit) to create:');
+    push('| Action | Category | Primary | Counting |');
+    push('|---|---|---|---|');
+    s.conversionActions.forEach(function(r) {
+      push('| ' + [String(r.name).slice(0, 44), r.category,
+          r.primary ? 'yes' : 'no', r.counting].join(' | ') + ' |');
+    });
+    push('');
+  }
+  var inv = s.assetInventory || {};
+  push('Existing creative inventory: ' + (inv.videoCount || 0) +
+      ' YouTube video asset(s), ' + (inv.imageCount || 0) + ' image asset(s). ' +
+      ((inv.videoCount || 0) < 3
+        ? 'This is the creative gap: Demand Gen is YouTube and there is little or ' +
+          'no video, so producing video is a launch prerequisite.'
+        : 'There is existing video to cut for Shorts and in-feed.'));
+  if ((inv.videos || []).length) {
+    push('Existing video assets (name, link):');
+    push('| Video | URL |');
+    push('|---|---|');
+    inv.videos.forEach(function(v) {
+      push('| ' + [String(v.name).slice(0, 50), v.url || '(no public link)']
+          .join(' | ') + ' |');
+    });
+  }
+  push('');
   if ((s.creative || []).length) {
-    push('Best existing creative to repurpose for Demand Gen (name, type, conversions, cost, CPA, destination):');
+    push('Best existing ads to repurpose for Demand Gen (name, type, conversions, cost, CPA, destination):');
     push('| Creative | Type | Conv | Cost | CPA | URL |');
     push('|---|---|---|---|---|---|');
     s.creative.forEach(function(r) {
@@ -3158,6 +3222,29 @@ function buildStrategyPrompt_(s) {
       push('| ' + [String(r.url).replace(/^https?:\/\//, '').slice(0, 54),
           (Number(r.conversions) || 0).toFixed(1), money0(r.cost),
           (r.conversions ? money0(r.cpa) : 'n/a'), pct1(r.cvr)].join(' | ') + ' |');
+    });
+    push('');
+  }
+  if ((s.channelMix || []).length) {
+    push('Current channel mix, non Demand Gen (channel, spend, conversions, CPA, ROAS). Frames the opportunity: this is the account with no prospecting engine:');
+    push('| Channel | Spend | Conv | CPA | ROAS |');
+    push('|---|---|---|---|---|');
+    s.channelMix.forEach(function(r) {
+      push('| ' + [r.channel, money0(r.cost),
+          (Number(r.conversions) || 0).toFixed(1),
+          (r.conversions ? money0(r.cpa) : 'n/a'),
+          (r.cost ? r.roas.toFixed(2) : 'n/a')].join(' | ') + ' |');
+    });
+    push('');
+  }
+  if ((s.devices || []).length) {
+    push('Device split, non Demand Gen (device, spend, conversions, CPA). Sets the Demand Gen mobile and YouTube expectation:');
+    push('| Device | Spend | Conv | CPA |');
+    push('|---|---|---|---|');
+    s.devices.forEach(function(r) {
+      push('| ' + [r.device, money0(r.cost),
+          (Number(r.conversions) || 0).toFixed(1),
+          (r.conversions ? money0(r.cpa) : 'n/a')].join(' | ') + ' |');
     });
     push('');
   }
@@ -3874,6 +3961,130 @@ function strategyLandingPages_(dateClause) {
   }).sort(function(x, y) { return y.conversions - x.conversions; }).slice(0, 15);
 }
 
+/** Classify a user list by name + type, for seed-vs-exclude guidance. */
+function classifyList_(name, type) {
+  var n = String(name || '').toLowerCase();
+  var t = String(type || '');
+  if (/purchas|buyer|ordered|converters?|customers?\b|clients?/.test(n) ||
+      t === 'Crm Based') {
+    return 'Customers / purchasers';
+  }
+  if (/cart|checkout|abandon|basket/.test(n)) return 'Cart / checkout';
+  if (/similar|look ?alike|lal/.test(n) || t === 'Similar') return 'Lookalike';
+  if (/email|sms|subscrib|newsletter|lead/.test(n)) return 'Leads / subscribers';
+  if (/visit|view|traffic|all users|site|page|session|engaged/.test(n)) {
+    return 'Site visitors';
+  }
+  return t || 'Other';
+}
+
+/**
+ * Every audience list in the account (not just the ones attached to a campaign),
+ * so the launch plan can seed from and exclude the right lists. user_list has no
+ * metrics or date, so this is a pure inventory.
+ */
+function strategyUserLists_() {
+  var rows = gaql_('Strategy user lists', 'user_list',
+      ['user_list.id', 'user_list.name', 'user_list.type',
+       'user_list.size_for_display', 'user_list.size_for_search',
+       'user_list.membership_status'],
+      [], 'user_list.id > 0', 'user_list.size_for_display DESC', 200);
+  return rows.map(function(r) {
+    var name = get_(r, 'userList.name') || '';
+    var type = pretty_(get_(r, 'userList.type'));
+    return {
+      name: name,
+      type: type,
+      role: classifyList_(name, type),
+      sizeDisplay: num_(get_(r, 'userList.sizeForDisplay')),
+      sizeSearch: num_(get_(r, 'userList.sizeForSearch')),
+      status: pretty_(get_(r, 'userList.membershipStatus'))
+    };
+  }).filter(function(l) { return l.name; }).slice(0, 60);
+}
+
+/** Conversion actions the account tracks, so we know what DG can optimise to. */
+function strategyConversions_() {
+  var rows = gaql_('Strategy conversion actions', 'conversion_action',
+      ['conversion_action.name', 'conversion_action.category',
+       'conversion_action.type', 'conversion_action.status',
+       'conversion_action.primary_for_goal',
+       'conversion_action.counting_type'],
+      [], "conversion_action.status = 'ENABLED'", 'conversion_action.name', 200);
+  return rows.map(function(r) {
+    return {
+      name: get_(r, 'conversionAction.name') || '',
+      category: pretty_(get_(r, 'conversionAction.category')),
+      type: pretty_(get_(r, 'conversionAction.type')),
+      // primary_for_goal defaults true; false means excluded from the goal.
+      primary: get_(r, 'conversionAction.primaryForGoal') !== false,
+      counting: pretty_(get_(r, 'conversionAction.countingType'))
+    };
+  }).filter(function(c) { return c.name; }).slice(0, 40);
+}
+
+/** Existing creative inventory: does the account have video for YouTube at all? */
+function strategyAssetInventory_() {
+  var out = { videoCount: 0, imageCount: 0, videos: [], images: [] };
+  var vids = gaql_('Strategy video assets', 'asset',
+      ['asset.id', 'asset.name',
+       'asset.youtube_video_asset.youtube_video_id'],
+      [], "asset.type = 'YOUTUBE_VIDEO'", '', 100);
+  out.videoCount = vids.length;
+  out.videos = vids.slice(0, 20).map(function(r) {
+    var yt = get_(r, 'asset.youtubeVideoAsset.youtubeVideoId') || '';
+    return {
+      name: get_(r, 'asset.name') || ('Video ' + get_(r, 'asset.id')),
+      youtubeId: yt,
+      url: yt ? 'https://www.youtube.com/watch?v=' + yt : ''
+    };
+  });
+  var imgs = gaql_('Strategy image assets', 'asset',
+      ['asset.id', 'asset.name'], [], "asset.type = 'IMAGE'", '', 100);
+  out.imageCount = imgs.length;
+  return out;
+}
+
+/** Current channel mix (non-DG): where the account spends and converts today. */
+function strategyChannelMix_(where, dateClause) {
+  var rows = gaql_('Strategy channel mix', 'campaign',
+      ['campaign.advertising_channel_type']
+          .concat(['metrics.cost_micros', 'metrics.conversions',
+                   'metrics.conversions_value']),
+      [], where + ' AND ' + dateClause);
+  var by = {};
+  rows.forEach(function(r) {
+    var ch = pretty_(get_(r, 'campaign.advertisingChannelType')) || 'Other';
+    var a = by[ch] || (by[ch] = { channel: ch, cost: 0, conversions: 0,
+        convValue: 0 });
+    a.cost += micros_(get_(r, 'metrics.costMicros'));
+    a.conversions += num_(get_(r, 'metrics.conversions'));
+    a.convValue += num_(get_(r, 'metrics.conversionsValue'));
+  });
+  return Object.keys(by).map(function(k) {
+    var a = by[k]; a.cpa = safeDiv_(a.cost, a.conversions);
+    a.roas = safeDiv_(a.convValue, a.cost); return a;
+  }).sort(function(x, y) { return y.cost - x.cost; });
+}
+
+/** Device split (non-DG): sets the DG mobile / YouTube expectation. */
+function strategyDevices_(where, dateClause) {
+  var rows = gaql_('Strategy devices', 'campaign',
+      ['segments.device']
+          .concat(['metrics.cost_micros', 'metrics.conversions']),
+      [], where + ' AND ' + dateClause);
+  var by = {};
+  rows.forEach(function(r) {
+    var d = pretty_(get_(r, 'segments.device')) || 'Other';
+    var a = by[d] || (by[d] = { device: d, cost: 0, conversions: 0 });
+    a.cost += micros_(get_(r, 'metrics.costMicros'));
+    a.conversions += num_(get_(r, 'metrics.conversions'));
+  });
+  return Object.keys(by).map(function(k) {
+    var a = by[k]; a.cpa = safeDiv_(a.cost, a.conversions); return a;
+  }).sort(function(x, y) { return y.cost - x.cost; });
+}
+
 /**
  * Mine the non-Demand-Gen account for a DG launch plan. Client-callable. Stores
  * the result in a chunked _strategy_<id> sheet (too big for an override cell)
@@ -3895,10 +4106,15 @@ function buildStrategy(customerId) {
         age: whoBuys_(AGE_BANDS, demo.age),
         gender: whoBuys_(GENDER_BANDS, demo.gender)
       },
+      audienceLists: strategyUserLists_(),
       audiences: strategyAudiences_(where, range.current),
       searchThemes: strategySearchTerms_(range.current),
+      conversionActions: strategyConversions_(),
       creative: strategyCreative_(where, range.current),
+      assetInventory: strategyAssetInventory_(),
       landingPages: strategyLandingPages_(range.current),
+      channelMix: strategyChannelMix_(where, range.current),
+      devices: strategyDevices_(where, range.current),
       generated: Utilities.formatDate(new Date(),
           customer.timeZone || 'America/New_York', 'MMM d, yyyy')
     };
@@ -4919,6 +5135,15 @@ function deckForStrategy_(s) {
               r.cost ? r.roas.toFixed(2) : '—'];
     }));
 
+  tableSlide('Audience assets: seed and exclude',
+      'Every list in the account. Exclude customers and purchasers from ' +
+      'prospecting, seed from the rest.',
+    ['List', 'Type', 'Role', 'Display size', 'Status'],
+    (s.audienceLists || []).map(function(r) {
+      return [String(r.name).slice(0, 36), r.type, r.role,
+              Math.round(r.sizeDisplay || 0).toLocaleString(), r.status];
+    }));
+
   tableSlide('Seed audiences: converting segments',
       'Existing audiences that convert. Seed the Demand Gen signal from these.',
     ['Audience', 'Type', 'Conv', 'Cost', 'CPA'],
@@ -4950,6 +5175,26 @@ function deckForStrategy_(s) {
       return [String(r.url).replace(/^https?:\/\//, '').slice(0, 48),
               dec(r.conversions), money(r.cost),
               r.conversions ? money(r.cpa) : '—'];
+    }));
+
+  var inv = s.assetInventory || {};
+  tableSlide('What to optimise toward',
+      'Conversion actions the account tracks. ' + (inv.videoCount || 0) +
+      ' video asset(s) exist, so ' + ((inv.videoCount || 0) < 3
+        ? 'video must be produced before launch.' : 'there is video to adapt.'),
+    ['Action', 'Category', 'Primary', 'Counting'],
+    (s.conversionActions || []).map(function(r) {
+      return [String(r.name).slice(0, 40), r.category, r.primary ? 'yes' : 'no',
+              r.counting];
+    }));
+
+  tableSlide('Current channel mix',
+      'Where the account spends today, with no prospecting engine. Demand Gen ' +
+      'fills the top of the funnel.',
+    ['Channel', 'Spend', 'Conv', 'CPA', 'ROAS'],
+    (s.channelMix || []).map(function(r) {
+      return [r.channel, money(r.cost), dec(r.conversions),
+              r.conversions ? money(r.cpa) : '—', r.cost ? r.roas.toFixed(2) : '—'];
     }));
 
   // Launch setup checklist.
