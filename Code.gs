@@ -3485,6 +3485,10 @@ function diagnoseAccess(customerId) {
     var id = ensureAccountContext_(customerId ||
         (cachedAccounts_()[0] || {}).id || '');
     L('=== Access diagnostic ===');
+    var who = '';
+    try { who = Session.getEffectiveUser().getEmail(); } catch (e) {}
+    L('Running as (this identity’s Ads access is what counts): ' +
+        (who || '(hidden — running under a different domain or as the web app)'));
     L('Target customer: ' + formatId_(id));
     L('Developer token: ' + (CONFIG.DEVELOPER_TOKEN ? 'set' : 'MISSING'));
     L('Manager id (login-customer-id) configured: ' +
