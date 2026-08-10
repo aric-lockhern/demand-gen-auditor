@@ -438,6 +438,11 @@ function setup() {
      'upload them. Defaults to the Lockhern 2023 Logos folder. Name one file ' +
      'with "white" (for the blue title/closing slides); the rest is the ' +
      'full-colour logo. The folder must be owned by or shared with this account.'],
+    ['Manager (MCC) customer ID', '',
+     'Optional. The manager (MCC) account ID, digits only, needed only when you ' +
+     'reach a client account through a manager. Sent as the login-customer-id ' +
+     'header. A Script Property of the same name (LOGIN_CUSTOMER_ID) wins if ' +
+     'set. Fixes "caller does not have permission / manager id must be set".'],
     ['Template deck Drive ID', '',
      'Optional. Drive ID or share URL of the FINAL reference deck (the 12-slide ' +
      'house format). When set, the build bundle includes it as ' +
@@ -520,6 +525,10 @@ function loadSettings_() {
     if (map['rows per table']) CONFIG.TOP_N = Number(map['rows per table']);
     if (map['google ads api version']) {
       CONFIG.API_VERSION = String(map['google ads api version']).trim();
+    }
+    // Manager (MCC) id: Script Property wins; the Settings tab is a fallback.
+    if (!CONFIG.LOGIN_CUSTOMER_ID && map['manager (mcc) customer id']) {
+      CONFIG.LOGIN_CUSTOMER_ID = digits_(map['manager (mcc) customer id']);
     }
     CONFIG.COMPARE_PRIOR_PERIOD = truthy_(map['compare with prior period'], true);
     CONFIG.SKIP_PLACEMENTS = !truthy_(map['include placements'], false);
@@ -840,6 +849,14 @@ function describeError_(code, body) {
   } else if (code === 401) {
     message += '\nFix: re-run installTrigger to re-consent, and confirm the ' +
         'adwords scope is in the manifest.';
+  } else if (code === 403 &&
+      /login-customer-id|does not have permission|manager/i.test(raw)) {
+    message += '\nFix: this account is reached through a manager (MCC), so the ' +
+        'manager id must be sent as login-customer-id. Set it either as Script ' +
+        'Property LOGIN_CUSTOMER_ID, or in the Settings tab under "Manager (MCC) ' +
+        'customer ID" (digits only), then re-run. Currently sending: ' +
+        (CONFIG.LOGIN_CUSTOMER_ID ? digits_(CONFIG.LOGIN_CUSTOMER_ID)
+                                  : '(none)') + '.';
   } else if (code === 403) {
     message += '\nFix: check DEVELOPER_TOKEN, and whether LOGIN_CUSTOMER_ID ' +
         'is required for how you reach this account.';
@@ -3434,6 +3451,12 @@ function ensureAccountContext_(customerId) {
     if (map['days to report']) CONFIG.LAST_N_DAYS = Number(map['days to report']);
     if (map['google ads api version']) {
       CONFIG.API_VERSION = String(map['google ads api version']).trim();
+    }
+    // Manager (MCC) id: Script Property wins, but fall back to the Settings tab
+    // so the web-callable helpers reach a client account under a manager even
+    // when only the sheet is configured.
+    if (!CONFIG.LOGIN_CUSTOMER_ID && map['manager (mcc) customer id']) {
+      CONFIG.LOGIN_CUSTOMER_ID = digits_(map['manager (mcc) customer id']);
     }
   }
   if (!CONFIG.DEVELOPER_TOKEN) {
