@@ -459,9 +459,14 @@
     font-family: var(--sans); font-size: 13px; line-height: 1.55; resize: vertical;
   }
   .briefwrap p { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
-  .actionbar { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .actionbar { margin-top: 36px; display: flex; gap: 10px; flex-wrap: wrap; }
   .deckwrap { margin-top: 14px; display: none; }
   .deckwrap.open { display: block; }
+  /* The build section now sits below the data; set it off with a top rule. */
+  #root:not([data-mode="analyze"]) .actionbar {
+    border-top: 2px solid var(--rule); padding-top: 26px;
+  }
+  .buildhead { margin: 6px 0 14px; }
   /* Primary mode tabs. */
   .appmodes {
     display: flex; gap: 8px; margin: 20px 0 6px; border-bottom: 1px solid var(--rule);
@@ -865,11 +870,39 @@ document.getElementById('root').innerHTML =
     '<nav class="appmodes" id="appModes"></nav>' +
     '<div class="modeintro" id="modeIntro"></div>' +
     '<div class="window" id="window"></div>' +
-    '<div class="actionbar build-only">' +
+    '</header>' +
+  '<div class="card readout analyze-only"><div class="section-label">What the numbers say</div>' +
+    '<ul id="readout"></ul></div>' +
+  '<section class="spectrum analyze-only"><div class="section-label">Where the budget went</div>' +
+    '<div class="spectrum-bar" id="spectrum"></div>' +
+    '<div class="legend" id="legend"></div></section>' +
+  '<div class="modebar analyze-only"><div class="switch" id="modeSwitch">' +
+      '<button data-mode="conversions">Conversions</button>' +
+      '<button data-mode="all">All conversions</button></div>' +
+    '<span class="mode-hint" id="modeHint"></span></div>' +
+  '<div class="kpis analyze-only" id="kpis"></div>' +
+  '<nav class="tabs" id="tabs"></nav>' +
+  '<nav class="subtabs" id="subtabs"></nav>' +
+  '<div class="toolbar" id="toolbar"></div>' +
+  '<div id="panels"></div>' +
+  '<div class="note" id="note"></div>' +
+  BUILD_SECTION_HTML() +
+  BUILD_WIZARD_HTML();
+
+// The build tools (copy buttons + 4-step deck wizard) render only in the
+// Audit / Strategy modes, and now sit BELOW the data so the numbers lead.
+function BUILD_SECTION_HTML() {
+  return '<div class="actionbar build-only">' +
       '<button class="briefbtn" id="briefBtn">Copy analysis brief</button>' +
       '<button class="briefbtn" id="promptBtn">Copy deck design prompt</button>' +
-    '</div>' +
-    '<div class="deckwrap open build-only" id="deckWrap"><div class="wizard">' +
+    '</div>';
+}
+function BUILD_WIZARD_HTML() {
+  return '<div class="deckwrap open build-only" id="deckWrap"><div class="buildhead">' +
+      '<div class="section-label" style="margin:0">Build the deck</div>' +
+      '<div class="rb-sub" style="margin:2px 0 0">Everything below the data. ' +
+        'Work through it top to bottom.</div>' +
+    '</div><div class="wizard">' +
       '<div class="wstep" id="wstep1"><div class="wnum">1</div><div class="wbody">' +
         '<div class="wtitle">Build the rough deck</div>' +
         '<div class="wsub">Generates the on-brand Google Slides deck from the ' +
@@ -925,23 +958,8 @@ document.getElementById('root').innerHTML =
     '<div class="briefwrap" id="briefWrap">' +
       '<textarea id="briefText" readonly aria-label="Copied text"></textarea>' +
       '<p id="briefHint"></p>' +
-    '</div>' +
-    '</header>' +
-  '<div class="card readout analyze-only"><div class="section-label">What the numbers say</div>' +
-    '<ul id="readout"></ul></div>' +
-  '<section class="spectrum analyze-only"><div class="section-label">Where the budget went</div>' +
-    '<div class="spectrum-bar" id="spectrum"></div>' +
-    '<div class="legend" id="legend"></div></section>' +
-  '<div class="modebar analyze-only"><div class="switch" id="modeSwitch">' +
-      '<button data-mode="conversions">Conversions</button>' +
-      '<button data-mode="all">All conversions</button></div>' +
-    '<span class="mode-hint" id="modeHint"></span></div>' +
-  '<div class="kpis analyze-only" id="kpis"></div>' +
-  '<nav class="tabs" id="tabs"></nav>' +
-  '<nav class="subtabs" id="subtabs"></nav>' +
-  '<div class="toolbar" id="toolbar"></div>' +
-  '<div id="panels"></div>' +
-  '<div class="note" id="note"></div>';
+    '</div>';
+}
 
 if (ACCOUNTS.length > 1) {
   document.getElementById('accountPicker').onchange = function() {
@@ -2173,30 +2191,89 @@ var STRATEGY_LOADED = false;   // So we only auto-fetch once per view open.
 function drawStrategy() {
   document.getElementById('count').textContent =
       STRATEGY_DATA ? 'launch plan ready' : 'no plan yet';
-  var intro = '<div class="rb-sub" style="margin:0 0 14px">Step 1 of the ' +
-    'strategy deck. Pull all the account’s data into the tool: who already ' +
-    'buys, the full audience-list inventory (seed vs exclude), converting ' +
-    'audiences and search themes, the conversion actions, the existing video ' +
-    'and image creative, where the money lands, and the channel and device ' +
-    'mix. It all shows below. Then run the AI analysis and build the launch-plan ' +
-    'deck with the wizard above.</div>';
-
-  var action = '<div style="margin-bottom:16px">' +
+  var action = '<div class="card" style="margin:0 0 20px;display:flex;' +
+    'align-items:center;gap:14px;flex-wrap:wrap">' +
     '<button class="briefbtn" id="stratBuild" style="border-color:var(--accent);' +
     'color:var(--accent);font-weight:600">' +
     (STRATEGY_DATA ? 'Re-pull account data' : 'Pull all account data') +
-    '</button><span id="stratStatus" class="ovr-state" style="margin-left:10px">' +
-    '</span></div>';
+    '</button>' +
+    '<div style="flex:1;min-width:220px"><div class="rb-sub" style="margin:0">' +
+    'Pulls every non-DG signal — who buys, the full audience-list inventory ' +
+    '(seed vs exclude), converting audiences and search themes, conversion ' +
+    'actions, existing video and image creative, live destinations, and the ' +
+    'channel and device mix — and showcases it all right here.</div></div>' +
+    '<span id="stratStatus" class="ovr-state"></span></div>';
 
   var body = STRATEGY_DATA ? drawStrategyData(STRATEGY_DATA)
-    : '<div class="empty">Nothing pulled yet. Click Pull all account data to ' +
-      'mine the account and see everything here. This runs several live ' +
-      'queries.</div>';
-  return intro + action + body;
+    : '<div class="empty">Nothing pulled yet. Click <strong>Pull all account ' +
+      'data</strong> to mine the account and see everything here. This runs ' +
+      'several live queries.</div>';
+  return action + body;
+}
+
+function stratTile(label, value, sub) {
+  return '<div class="kpi"><div class="label">' + esc(label) + '</div>' +
+    '<div class="value">' + value + '</div>' +
+    (sub ? '<div class="delta flat">' + esc(sub) + '</div>' : '') + '</div>';
+}
+
+// Headline tiles so the pull reads as a showcase, not a wall of tables.
+function stratStatTiles(s) {
+  var tiles = [];
+  var mix = s.channelMix || [];
+  if (mix.length) {
+    var spend = 0, conv = 0;
+    mix.forEach(function(r) { spend += (r.cost || 0); conv += (r.conversions || 0); });
+    tiles.push(stratTile('Spend mined', money(spend),
+        mix.length + ' non-DG channel' + (mix.length === 1 ? '' : 's')));
+    tiles.push(stratTile('Conversions', int(conv), 'across those channels'));
+  }
+  var lists = s.audienceLists || [];
+  if (lists.length) {
+    var excl = lists.filter(function(r) {
+      return /purchaser|customer/i.test(r.role); }).length;
+    tiles.push(stratTile('Audience lists', String(lists.length),
+        excl + ' to exclude · ' + (lists.length - excl) + ' seed'));
+  }
+  if ((s.audiences || []).length) {
+    tiles.push(stratTile('Converting audiences', String(s.audiences.length),
+        'already in use'));
+  }
+  var inv = s.assetInventory || {};
+  if (inv.videoCount !== undefined) {
+    tiles.push(stratTile('Video assets', String(inv.videoCount || 0),
+        (inv.imageCount || 0) + ' image asset' +
+        ((inv.imageCount || 0) === 1 ? '' : 's')));
+  }
+  if ((s.searchThemes || []).length) {
+    tiles.push(stratTile('Search themes', String(s.searchThemes.length),
+        'converting terms to seed'));
+  }
+  if ((s.landingPages || []).length) {
+    tiles.push(stratTile('Live destinations', String(s.landingPages.length),
+        'converting today'));
+  }
+  if ((s.conversionActions || []).length) {
+    var prim = s.conversionActions.filter(function(r) { return r.primary; }).length;
+    tiles.push(stratTile('Conversion actions', String(s.conversionActions.length),
+        prim + ' primary'));
+  }
+  if (!tiles.length) return '';
+  return '<div class="section-label" style="margin-top:0">Launch signal summary' +
+    '</div><div class="kpis" style="margin-bottom:26px">' + tiles.join('') + '</div>';
+}
+
+// A thin share bar reused across strategy cards.
+function stratBar(frac) {
+  var w = Math.max(0, Math.min(1, frac || 0)) * 100;
+  return '<div style="height:5px;background:var(--wash);border-radius:4px;' +
+    'overflow:hidden;margin-top:4px"><div style="height:100%;width:' +
+    w.toFixed(1) + '%;background:var(--accent);border-radius:4px"></div></div>';
 }
 
 function drawStrategyData(s) {
-  var out = '<div class="meta" style="margin:0 0 12px">Mined ' +
+  var out = stratStatTiles(s);
+  out += '<div class="meta" style="margin:0 0 12px">Mined ' +
     esc(s.window.start) + ' to ' + esc(s.window.end) + ' from non Demand Gen ' +
     'campaigns.</div>';
 
@@ -2310,12 +2387,16 @@ function drawStrategyData(s) {
       }).join('') + '</tbody></table></div>';
   }
   if ((s.channelMix || []).length) {
+    var mixTotal = 0;
+    s.channelMix.forEach(function(r) { mixTotal += (r.cost || 0); });
     out += '<div class="subhead">Current channel mix (non Demand Gen)</div>' +
       '<div class="scroll"><table><thead><tr><th>Channel</th><th>Spend</th>' +
       '<th>Conv</th><th>CPA</th><th>ROAS</th></tr></thead><tbody>' +
       s.channelMix.map(function(r) {
+        var share = mixTotal ? (r.cost || 0) / mixTotal : 0;
         return '<tr><td class="name"><strong>' + esc(r.channel) + '</strong></td>' +
-          '<td class="num">' + money(r.cost) + '</td>' +
+          '<td class="num">' + money(r.cost) + '<span class="meta">' +
+            pct0(share) + ' of spend</span>' + stratBar(share) + '</td>' +
           '<td class="num">' + dec(r.conversions) + '</td>' +
           '<td class="num">' + (r.conversions ? money(r.cpa) : '—') + '</td>' +
           '<td class="num">' + (r.cost ? r.roas.toFixed(2) : '—') + '</td></tr>';
@@ -2340,9 +2421,9 @@ function stratWhoBuys(header, rows) {
   var body = rows.map(function(r) {
     return '<tr><td class="name"><strong>' + esc(r.band) + '</strong></td>' +
       '<td class="num">' + money(r.revenue) + '<span class="meta">' +
-        pct0(r.revShare) + ' of rev</span></td>' +
+        pct0(r.revShare) + ' of rev</span>' + stratBar(r.revShare) + '</td>' +
       '<td class="num">' + dec(r.conversions) + '<span class="meta">' +
-        pct0(r.convShare) + ' of conv</span></td>' +
+        pct0(r.convShare) + ' of conv</span>' + stratBar(r.convShare) + '</td>' +
       '<td class="num">' + (r.cost ? r.roas.toFixed(2) : '—') + '</td>' +
       '<td class="num">' + (r.conversions ? money(r.cpa) : '—') + '</td></tr>';
   }).join('');
