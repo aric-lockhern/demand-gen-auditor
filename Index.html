@@ -520,6 +520,15 @@
     line-height: 1.5;
   }
   .wstep .briefbtn { margin-top: 2px; }
+  /* Collapsible wizard steps: the title is a header; everything else folds. */
+  .wstep .wtitle { cursor: pointer; position: relative; padding-right: 20px; }
+  .wstep .wtitle::after {
+    content: '\25be'; position: absolute; right: 0; top: 1px; color: var(--muted);
+    transition: transform .15s;
+  }
+  .wstep.collapsed { padding: 11px 18px; }
+  .wstep.collapsed .wtitle::after { transform: rotate(-90deg); }
+  .wstep.collapsed .wbody > :not(.wtitle) { display: none; }
   .dropzone {
     border: 1.5px dashed var(--faint); border-radius: 12px; padding: 20px;
     text-align: center; color: var(--muted); font-size: 13.5px; cursor: pointer;
@@ -1044,7 +1053,9 @@ function deckSetProgress(fraction, label) {
 }
 function unlockStep(n) {
   var el = document.getElementById('wstep' + n);
-  if (el) el.className = 'wstep';
+  if (!el) return;
+  el.classList.remove('locked');
+  el.classList.add('collapsed');
 }
 function triggerDownload(bytesB64, name, mime) {
   var bin = atob(bytesB64), len = bin.length, bytes = new Uint8Array(len);
@@ -1093,6 +1104,7 @@ document.getElementById('deckBtn').onclick = function() {
               (DECK_URLS.length > 1 ? ' ' + (i + 1) : '') + ' →</a>';
         }).join('<br>');
         unlockStep(2); unlockStep(3); unlockStep(4);
+        expandStep(2);
         refreshBundleGate();
         toast('Rough deck ready. Add screenshots (step 2) or skip.');
       })
@@ -1218,7 +1230,11 @@ document.addEventListener('paste', function(e) {
       if (f) { addShotFile(f); added = true; }
     }
   }
-  if (added) { toast('Screenshot added'); unlockStep(2); }
+  if (added) {
+    toast('Screenshot added');
+    var s2 = document.getElementById('wstep2');
+    if (s2) { s2.classList.remove('locked'); s2.classList.remove('collapsed'); }
+  }
 });
 
 document.getElementById('bundleBtn').onclick = function() {
@@ -1244,7 +1260,7 @@ document.getElementById('bundleBtn').onclick = function() {
                 res.warnings.map(esc).join(' ') + '</div>';
           }
           lbl.innerHTML = html;
-          unlockStep(4);
+          expandStep(4);
           toast('Bundle downloaded');
         } catch (e) { lbl.textContent = ''; toast('Download blocked by browser'); }
       })
@@ -2158,21 +2174,24 @@ function drawStrategy() {
   document.getElementById('count').textContent =
       STRATEGY_DATA ? 'launch plan ready' : 'no plan yet';
   var intro = '<div class="rb-sub" style="margin:0 0 14px">Step 1 of the ' +
-    'strategy deck. Mine the rest of the account (all non Demand Gen campaigns) ' +
-    'for who already buys, which audiences and search themes convert, which ' +
-    'creative to repurpose, and where the money lands. Then run the AI analysis ' +
-    'and build the launch-plan deck with the wizard above.</div>';
+    'strategy deck. Pull all the account’s data into the tool: who already ' +
+    'buys, the full audience-list inventory (seed vs exclude), converting ' +
+    'audiences and search themes, the conversion actions, the existing video ' +
+    'and image creative, where the money lands, and the channel and device ' +
+    'mix. It all shows below. Then run the AI analysis and build the launch-plan ' +
+    'deck with the wizard above.</div>';
 
   var action = '<div style="margin-bottom:16px">' +
     '<button class="briefbtn" id="stratBuild" style="border-color:var(--accent);' +
     'color:var(--accent);font-weight:600">' +
-    (STRATEGY_DATA ? 'Rebuild launch recommendation' : 'Build launch recommendation') +
+    (STRATEGY_DATA ? 'Re-pull account data' : 'Pull all account data') +
     '</button><span id="stratStatus" class="ovr-state" style="margin-left:10px">' +
     '</span></div>';
 
   var body = STRATEGY_DATA ? drawStrategyData(STRATEGY_DATA)
-    : '<div class="empty">No launch recommendation yet. Click Build to mine the ' +
-      'account. This runs several live queries.</div>';
+    : '<div class="empty">Nothing pulled yet. Click Pull all account data to ' +
+      'mine the account and see everything here. This runs several live ' +
+      'queries.</div>';
   return intro + action + body;
 }
 
@@ -2883,6 +2902,31 @@ function setAppMode(mode) {
   render();
 }
 
+/**
+ * Collapsible wizard so the four steps stop taking a static wall of space.
+ * Step 1 opens; 2 to 4 fold to a header until clicked. Clicking a title toggles
+ * its own step; unlocking a step (step 1 done) auto-opens the next.
+ */
+function initWizardAccordion() {
+  var steps = document.querySelectorAll('#deckWrap .wstep');
+  for (var i = 0; i < steps.length; i++) {
+    if (i > 0) steps[i].classList.add('collapsed');
+    var title = steps[i].querySelector('.wtitle');
+    if (title) title.onclick = (function(step) {
+      return function() { step.classList.toggle('collapsed'); };
+    })(steps[i]);
+  }
+}
+
+/** Open one wizard step (1-based) and collapse the rest. */
+function expandStep(n) {
+  var steps = document.querySelectorAll('#deckWrap .wstep');
+  for (var i = 0; i < steps.length; i++) {
+    if (i === n - 1) steps[i].classList.remove('collapsed');
+    else steps[i].classList.add('collapsed');
+  }
+}
+
 /** Point the wizard's step 1 at the deck type the current mode builds. */
 function syncWizardCopy() {
   var strategy = APP_MODE === 'strategy';
@@ -3324,6 +3368,7 @@ document.getElementById('note').innerHTML =
 
 document.getElementById('root').setAttribute('data-mode', APP_MODE);
 buildModeBar();
+initWizardAccordion();
 drawReadout();
 drawSpectrum();
 drawMode();

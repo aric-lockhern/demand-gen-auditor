@@ -4044,21 +4044,48 @@ function strategyConversions_() {
 }
 
 /** Existing creative inventory: does the account have video for YouTube at all? */
-function strategyAssetInventory_() {
+function strategyAssetInventory_(dateClause) {
   var out = { videoCount: 0, imageCount: 0, videos: [], images: [] };
-  var vids = gaql_('Strategy video assets', 'asset',
+  var seen = {};
+
+  // Primary source: the video resource lists YouTube videos that actually
+  // served in the window, including legacy Video campaigns whose creatives are
+  // NOT in the shared asset library (the reason an asset-only query missed
+  // them and reported zero).
+  var served = gaql_('Strategy videos', 'video',
+      ['video.id', 'video.title', 'metrics.impressions'],
+      [], dateClause || "segments.date DURING LAST_30_DAYS",
+      'metrics.impressions DESC', 100);
+  served.forEach(function(r) {
+    var yt = get_(r, 'video.id');
+    if (!yt || seen[yt]) return;
+    seen[yt] = true;
+    out.videos.push({
+      name: get_(r, 'video.title') || ('Video ' + yt),
+      youtubeId: yt,
+      url: 'https://www.youtube.com/watch?v=' + yt
+    });
+  });
+
+  // Also any YouTube video assets in the library that did not serve this window.
+  var lib = gaql_('Strategy video assets', 'asset',
       ['asset.id', 'asset.name',
        'asset.youtube_video_asset.youtube_video_id'],
       [], "asset.type = 'YOUTUBE_VIDEO'", '', 100);
-  out.videoCount = vids.length;
-  out.videos = vids.slice(0, 20).map(function(r) {
+  lib.forEach(function(r) {
     var yt = get_(r, 'asset.youtubeVideoAsset.youtubeVideoId') || '';
-    return {
-      name: get_(r, 'asset.name') || ('Video ' + get_(r, 'asset.id')),
+    if (yt && seen[yt]) return;
+    if (yt) seen[yt] = true;
+    out.videos.push({
+      name: get_(r, 'asset.name') || ('Video asset ' + get_(r, 'asset.id')),
       youtubeId: yt,
       url: yt ? 'https://www.youtube.com/watch?v=' + yt : ''
-    };
+    });
   });
+
+  out.videoCount = out.videos.length;
+  out.videos = out.videos.slice(0, 30);
+
   var imgs = gaql_('Strategy image assets', 'asset',
       ['asset.id', 'asset.name'], [], "asset.type = 'IMAGE'", '', 100);
   out.imageCount = imgs.length;
@@ -4131,7 +4158,7 @@ function buildStrategy(customerId) {
       searchThemes: strategySearchTerms_(range.current),
       conversionActions: strategyConversions_(),
       creative: strategyCreative_(where, range.current),
-      assetInventory: strategyAssetInventory_(),
+      assetInventory: strategyAssetInventory_(range.current),
       landingPages: strategyLandingPages_(range.current),
       channelMix: strategyChannelMix_(where, range.current),
       devices: strategyDevices_(where, range.current),
