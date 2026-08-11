@@ -462,6 +462,25 @@
   .actionbar { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
   .deckwrap { margin-top: 14px; display: none; }
   .deckwrap.open { display: block; }
+  /* Primary mode tabs. */
+  .appmodes {
+    display: flex; gap: 8px; margin: 20px 0 6px; border-bottom: 1px solid var(--rule);
+  }
+  .appmodes button {
+    appearance: none; border: none; background: none; cursor: pointer;
+    font-family: var(--sans); font-size: 15px; font-weight: 600;
+    color: var(--muted); padding: 10px 4px; margin-bottom: -1px;
+    border-bottom: 2.5px solid transparent;
+  }
+  .appmodes button:hover { color: var(--ink); }
+  .appmodes button[aria-selected="true"] {
+    color: var(--accent); border-bottom-color: var(--accent);
+  }
+  .modeintro { font-size: 13px; color: var(--muted); margin: 4px 0 8px;
+    max-width: 760px; line-height: 1.5; }
+  /* Show only the sections that belong to the active mode. */
+  #root[data-mode="analyze"] .build-only { display: none !important; }
+  #root:not([data-mode="analyze"]) .analyze-only { display: none !important; }
   .progress {
     height: 8px; background: var(--rule); border-radius: 5px; overflow: hidden;
     max-width: 460px;
@@ -833,12 +852,15 @@ document.getElementById('root').innerHTML =
                 esc(a.name) + '</option>';
           }).join('') + '</select>'
         : '') +
-    '</div><div class="window" id="window"></div>' +
-    '<div class="actionbar">' +
+    '</div>' +
+    '<nav class="appmodes" id="appModes"></nav>' +
+    '<div class="modeintro" id="modeIntro"></div>' +
+    '<div class="window" id="window"></div>' +
+    '<div class="actionbar build-only">' +
       '<button class="briefbtn" id="briefBtn">Copy analysis brief</button>' +
       '<button class="briefbtn" id="promptBtn">Copy deck design prompt</button>' +
     '</div>' +
-    '<div class="deckwrap open" id="deckWrap"><div class="wizard">' +
+    '<div class="deckwrap open build-only" id="deckWrap"><div class="wizard">' +
       '<div class="wstep" id="wstep1"><div class="wnum">1</div><div class="wbody">' +
         '<div class="wtitle">Build the rough deck</div>' +
         '<div class="wsub">Generates the on-brand Google Slides deck from the ' +
@@ -896,16 +918,16 @@ document.getElementById('root').innerHTML =
       '<p id="briefHint"></p>' +
     '</div>' +
     '</header>' +
-  '<div class="card readout"><div class="section-label">What the numbers say</div>' +
+  '<div class="card readout analyze-only"><div class="section-label">What the numbers say</div>' +
     '<ul id="readout"></ul></div>' +
-  '<section class="spectrum"><div class="section-label">Where the budget went</div>' +
+  '<section class="spectrum analyze-only"><div class="section-label">Where the budget went</div>' +
     '<div class="spectrum-bar" id="spectrum"></div>' +
     '<div class="legend" id="legend"></div></section>' +
-  '<div class="modebar"><div class="switch" id="modeSwitch">' +
+  '<div class="modebar analyze-only"><div class="switch" id="modeSwitch">' +
       '<button data-mode="conversions">Conversions</button>' +
       '<button data-mode="all">All conversions</button></div>' +
     '<span class="mode-hint" id="modeHint"></span></div>' +
-  '<div class="kpis" id="kpis"></div>' +
+  '<div class="kpis analyze-only" id="kpis"></div>' +
   '<nav class="tabs" id="tabs"></nav>' +
   '<nav class="subtabs" id="subtabs"></nav>' +
   '<div class="toolbar" id="toolbar"></div>' +
@@ -2134,25 +2156,12 @@ var STRATEGY_LOADED = false;   // So we only auto-fetch once per view open.
 
 function drawStrategy() {
   document.getElementById('count').textContent =
-      STRATEGY_MODE ? (STRATEGY_DATA ? 'launch plan ready' : 'no plan yet')
-                    : 'off';
-  var intro = '<div class="rb-sub" style="margin:0 0 14px">For an account that ' +
-    'does not run Demand Gen yet. Strategy mode mines the rest of the account ' +
-    '(all non Demand Gen campaigns) for a launch plan: who already buys, which ' +
-    'audiences and search themes convert, which creative to repurpose, and where ' +
-    'the money lands. Turn it on for this client, then build the recommendation.' +
-    '</div>';
-
-  var toggle = '<div style="border:1px solid var(--rule);background:var(--card);' +
-    'border-radius:12px;padding:16px;margin-bottom:16px">' +
-    '<label style="display:flex;align-items:center;gap:10px;font-size:14px;' +
-    'font-weight:600"><input type="checkbox" id="stratToggle"' +
-    (STRATEGY_MODE ? ' checked' : '') + '> Strategy mode for this account</label>' +
-    '<p class="meta" style="margin:8px 0 0">When on, the build bundle ships the ' +
-    'launch-plan prompt (not the audit prompt), and the deck becomes a Demand ' +
-    'Gen launch plan.</p></div>';
-
-  if (!STRATEGY_MODE) return intro + toggle;
+      STRATEGY_DATA ? 'launch plan ready' : 'no plan yet';
+  var intro = '<div class="rb-sub" style="margin:0 0 14px">Step 1 of the ' +
+    'strategy deck. Mine the rest of the account (all non Demand Gen campaigns) ' +
+    'for who already buys, which audiences and search themes convert, which ' +
+    'creative to repurpose, and where the money lands. Then run the AI analysis ' +
+    'and build the launch-plan deck with the wizard above.</div>';
 
   var action = '<div style="margin-bottom:16px">' +
     '<button class="briefbtn" id="stratBuild" style="border-color:var(--accent);' +
@@ -2164,7 +2173,7 @@ function drawStrategy() {
   var body = STRATEGY_DATA ? drawStrategyData(STRATEGY_DATA)
     : '<div class="empty">No launch recommendation yet. Click Build to mine the ' +
       'account. This runs several live queries.</div>';
-  return intro + toggle + action + body;
+  return intro + action + body;
 }
 
 function drawStrategyData(s) {
@@ -2325,20 +2334,10 @@ function stratWhoBuys(header, rows) {
 }
 
 function bindStrategy() {
-  var toggle = document.getElementById('stratToggle');
-  if (toggle) toggle.onchange = function() {
-    STRATEGY_MODE = this.checked;
-    if (STRATEGY_MODE) OVERRIDES['strategyMode::' + CURRENT_ACCOUNT] = 'true';
-    else delete OVERRIDES['strategyMode::' + CURRENT_ACCOUNT];
-    if (window.google && google.script && google.script.run) {
-      google.script.run.setStrategyMode(CURRENT_ACCOUNT, STRATEGY_MODE);
-    }
-    render();
-  };
   var buildBtn = document.getElementById('stratBuild');
   if (buildBtn) buildBtn.onclick = buildStrategyReco;
   // Auto-load a previously built plan the first time the view opens.
-  if (STRATEGY_MODE && !STRATEGY_LOADED && !STRATEGY_DATA) {
+  if (!STRATEGY_LOADED && !STRATEGY_DATA) {
     STRATEGY_LOADED = true;
     if (window.google && google.script && google.script.run) {
       google.script.run
@@ -2791,25 +2790,109 @@ var VIEWS = {
 var ACTIVE = 'videos';
 var SORT = { key: 'cost', asc: false };
 
-// Eleven flat tabs was too much to scan at once. Grouping by the question being
-// asked puts one row of five in front of the reader and keeps the rest one
-// click away rather than competing for attention.
-var GROUPS = [
-  { label: 'Deck', views: ['story'] },
-  { label: 'Creative', views: ['videos', 'ads', 'assets'] },
-  { label: 'Placement', views: ['surfaces', 'landingPages', 'placements'] },
-  { label: 'Audience', views: ['audiences', 'demographics', 'audienceValidation'] },
-  { label: 'Structure', views: ['campaigns', 'adGroups', 'settings'] },
-  { label: 'Outcomes', views: ['conversions', 'daily'] },
-  { label: 'Launch', views: ['strategy'] },
-  { label: 'AI', views: ['aiAnalysis'] }
+// The dashboard has three primary modes, chosen with the top tab bar:
+//  analyze  — explore the data we pulled, and run the AI analysis
+//  audit    — build the Demand Gen audit deck (storyboard + build wizard)
+//  strategy — build a Demand Gen launch strategy and its deck (no-DG accounts)
+// Each group belongs to one mode; the nav shows only the active mode's groups.
+var APP_MODE = 'analyze';
+var APP_MODES = [
+  { key: 'analyze', label: 'Analyze',
+    intro: 'Explore everything we pulled, then run the AI analysis. Those ' +
+      'findings feed both decks.' },
+  { key: 'audit', label: 'Audit deck',
+    intro: 'Build the Demand Gen audit deck for an account that already runs ' +
+      'Demand Gen. Use the wizard to build, package and hand off; the ' +
+      'storyboard below previews every slide.' },
+  { key: 'strategy', label: 'Strategy deck',
+    intro: 'For an account with no Demand Gen yet: mine the account, build the ' +
+      'launch recommendation, then build the strategy deck.' }
 ];
 
+var GROUPS = [
+  { label: 'Deck', views: ['story'], mode: 'audit' },
+  { label: 'Creative', views: ['videos', 'ads', 'assets'], mode: 'analyze' },
+  { label: 'Placement', views: ['surfaces', 'landingPages', 'placements'], mode: 'analyze' },
+  { label: 'Audience', views: ['audiences', 'demographics', 'audienceValidation'], mode: 'analyze' },
+  { label: 'Structure', views: ['campaigns', 'adGroups', 'settings'], mode: 'analyze' },
+  { label: 'Outcomes', views: ['conversions', 'daily'], mode: 'analyze' },
+  { label: 'Launch', views: ['strategy'], mode: 'strategy' },
+  { label: 'AI', views: ['aiAnalysis'], mode: 'analyze' }
+];
+
+function modeGroups() {
+  return GROUPS.filter(function(g) { return (g.mode || 'analyze') === APP_MODE; });
+}
+
+/** Index of the active view's group within the current mode's groups. */
 function groupOf(viewId) {
-  for (var i = 0; i < GROUPS.length; i++) {
-    if (GROUPS[i].views.indexOf(viewId) !== -1) return i;
+  var mg = modeGroups();
+  for (var i = 0; i < mg.length; i++) {
+    if (mg[i].views.indexOf(viewId) !== -1) return i;
   }
   return 0;
+}
+
+function buildModeBar() {
+  var bar = document.getElementById('appModes');
+  if (!bar) return;
+  bar.innerHTML = '';
+  APP_MODES.forEach(function(m) {
+    var btn = document.createElement('button');
+    btn.textContent = m.label;
+    btn.setAttribute('aria-selected', String(m.key === APP_MODE));
+    btn.onclick = function() { setAppMode(m.key); };
+    bar.appendChild(btn);
+  });
+  var intro = document.getElementById('modeIntro');
+  var cur = APP_MODES.filter(function(m) { return m.key === APP_MODE; })[0];
+  if (intro && cur) intro.textContent = cur.intro;
+}
+
+function setAppMode(mode) {
+  if (mode === APP_MODE) return;
+  APP_MODE = mode;
+  var root = document.getElementById('root');
+  if (root) root.setAttribute('data-mode', mode);
+
+  // The build wizard produces the strategy deck when strategy mode is on and
+  // the audit deck otherwise, so the tab drives that server-side toggle.
+  if (mode === 'audit' || mode === 'strategy') {
+    var on = mode === 'strategy';
+    STRATEGY_MODE = on;
+    if (on) OVERRIDES['strategyMode::' + CURRENT_ACCOUNT] = 'true';
+    else delete OVERRIDES['strategyMode::' + CURRENT_ACCOUNT];
+    if (window.google && google.script && google.script.run) {
+      google.script.run.setStrategyMode(CURRENT_ACCOUNT, on);
+    }
+    syncWizardCopy();
+  }
+
+  // Land on the first available view of the new mode.
+  var first = null;
+  modeGroups().some(function(g) {
+    var av = g.views.filter(function(id) { return VIEWS[id]; });
+    if (av.length) { first = av[0]; return true; }
+    return false;
+  });
+  if (first) ACTIVE = first;
+
+  buildModeBar();
+  buildNav();
+  buildToolbar();
+  render();
+}
+
+/** Point the wizard's step 1 at the deck type the current mode builds. */
+function syncWizardCopy() {
+  var strategy = APP_MODE === 'strategy';
+  var t = document.querySelector('#wstep1 .wtitle');
+  var s = document.querySelector('#wstep1 .wsub');
+  if (t) t.textContent = strategy ? 'Build the launch-plan deck'
+                                  : 'Build the rough deck';
+  if (s) s.textContent = strategy
+    ? 'Generates the on-brand Demand Gen launch-plan deck from the mined account.'
+    : 'Generates the on-brand Google Slides audit deck from the pulled data.';
 }
 
 function buildPanels() {
@@ -2834,11 +2917,12 @@ function selectView(id) {
 function buildNav() {
   var tabs = document.getElementById('tabs');
   var subtabs = document.getElementById('subtabs');
+  var mg = modeGroups();
   var activeGroup = groupOf(ACTIVE);
   tabs.innerHTML = '';
   subtabs.innerHTML = '';
 
-  GROUPS.forEach(function(group, index) {
+  mg.forEach(function(group, index) {
     var available = group.views.filter(function(id) { return VIEWS[id]; });
     if (!available.length) return;
 
@@ -2849,7 +2933,12 @@ function buildNav() {
     tabs.appendChild(btn);
   });
 
-  var current = GROUPS[activeGroup].views.filter(function(id) { return VIEWS[id]; });
+  // A single group in the mode needs no top row; a single view needs no sub row.
+  if (mg.length < 2) tabs.style.display = 'none';
+  else tabs.style.display = '';
+
+  var current = (mg[activeGroup] || mg[0] || { views: [] }).views
+      .filter(function(id) { return VIEWS[id]; });
   if (current.length < 2) return;
 
   current.forEach(function(id) {
@@ -3233,6 +3322,8 @@ document.getElementById('note').innerHTML =
           }).join(' · ')
         : '');
 
+document.getElementById('root').setAttribute('data-mode', APP_MODE);
+buildModeBar();
 drawReadout();
 drawSpectrum();
 drawMode();

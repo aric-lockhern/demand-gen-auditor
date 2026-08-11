@@ -137,6 +137,21 @@ where to drive, the launch setup) rather than an audit. Backed by
 `buildStrategy`, `getStrategyData`, `setStrategyMode`, `buildStrategyPrompt_` and
 `deckForStrategy_`.
 
+### Three modes
+
+The dashboard opens on a top tab bar with three primary modes, so each job has
+its own focused workspace:
+
+- **Analyze** — explore everything the pull returned (creative, placement,
+  audience, structure, outcomes) and run the AI analysis. These findings feed
+  both decks.
+- **Audit deck** — build the Demand Gen audit deck for an account that already
+  runs Demand Gen: the storyboard preview plus the build wizard.
+- **Strategy deck** — for an account with no Demand Gen yet: mine the account,
+  build the launch recommendation, then build the launch-plan deck. Selecting
+  this tab turns Strategy mode on for the account; the Audit deck tab turns it
+  off, so the wizard always builds the right deck.
+
 ### Analyze with AI (Claude in the tool)
 
 The dashboard's **AI → Analyze with AI** button sends the whole account (the
