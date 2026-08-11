@@ -5127,7 +5127,26 @@ function buildBundle(deckUrls, screenshots, uiLogos) {
     var files = [];
     var included = [];
     var warnings = [];
-    function add(blob) { files.push(blob); included.push(blob.getName()); }
+    // Utilities.zip throws if two entries share a name, and pasted screenshots
+    // all arrive as "image.png". Rename any collision to name-2, name-3, ...
+    // before it reaches the zip so the download never fails on a clash.
+    var usedNames = {};
+    function uniqueName_(name) {
+      var base = name, ext = '';
+      var m = /^(.*)(\.[^.]+)$/.exec(name);
+      if (m) { base = m[1]; ext = m[2]; }
+      var candidate = name, n = 2;
+      while (usedNames[candidate.toLowerCase()]) {
+        candidate = base + '-' + n + ext; n++;
+      }
+      usedNames[candidate.toLowerCase()] = true;
+      return candidate;
+    }
+    function add(blob) {
+      var nm = uniqueName_(blob.getName());
+      blob.setName(nm);
+      files.push(blob); included.push(nm);
+    }
 
     // Rough deck to .pptx. Try the Slides export path, then a fallback, and
     // report the failure rather than silently dropping it.
@@ -5239,7 +5258,9 @@ function buildBundle(deckUrls, screenshots, uiLogos) {
     (screenshots || []).forEach(function(sc, i) {
       var uri = String(sc.b64 || '');
       if (uri.indexOf('data:') !== 0) uri = 'data:image/png;base64,' + uri;
-      var b = dataUriToBlob_(uri, sc.name || ('screenshot-' + (i + 1)));
+      // Pasted images all report as "image.png"; give each a stable, distinct
+      // name so the set is legible and never collides in the zip.
+      var b = dataUriToBlob_(uri, 'screenshot-' + (i + 1));
       if (b) add(b);
     });
 
