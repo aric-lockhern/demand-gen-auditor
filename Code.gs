@@ -865,12 +865,27 @@ function describeError_(code, body) {
         'adwords scope is in the manifest.';
   } else if (code === 403 &&
       /login-customer-id|does not have permission|manager/i.test(raw)) {
-    message += '\nFix: this account is reached through a manager (MCC), so the ' +
-        'manager id must be sent as login-customer-id. Set it either as Script ' +
-        'Property LOGIN_CUSTOMER_ID, or in the Settings tab under "Manager (MCC) ' +
-        'customer ID" (digits only), then re-run. Currently sending: ' +
-        (CONFIG.LOGIN_CUSTOMER_ID ? digits_(CONFIG.LOGIN_CUSTOMER_ID)
-                                  : '(none)') + '.';
+    var who = '';
+    try { who = Session.getEffectiveUser().getEmail(); } catch (e) {}
+    var sending = CONFIG.LOGIN_CUSTOMER_ID
+        ? digits_(CONFIG.LOGIN_CUSTOMER_ID) : '(none)';
+    message += '\nThis web app runs as the Google account that DEPLOYED it ' +
+        '(executeAs: USER_DEPLOYING), not the account viewing it. Ads access is ' +
+        'checked against that deploying identity.' +
+        '\nRunning as: ' + (who ||
+          '(hidden — deployed under a different Google domain)') +
+        '\nManager id being sent as login-customer-id: ' + sending +
+        '\n\nIf you have DIRECT access to this account (not through an MCC):' +
+        '\n  • Deploy the web app as that Google account (Deploy > Manage ' +
+        'deployments, signed in as it), and open the /exec URL from it.' +
+        '\n  • Clear the Manager (MCC) customer ID — sending a manager id the ' +
+        'account is not under causes exactly this 403. ' +
+        (sending === '(none)' ? '' : 'You are currently sending ' + sending +
+          ', so clear it.') +
+        '\nIf you reach this account THROUGH a manager (MCC): set that manager ' +
+        'id in Settings > "Manager (MCC) customer ID" (digits only).' +
+        '\n\nRun diagnoseAccess() to see, definitively, which accounts this ' +
+        'identity can reach and whether the manager header helps or hurts.';
   } else if (code === 403) {
     message += '\nFix: check DEVELOPER_TOKEN, and whether LOGIN_CUSTOMER_ID ' +
         'is required for how you reach this account.';

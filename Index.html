@@ -316,6 +316,14 @@
   .acc.collapsed .acc-body { display: none; }
   .acc-body .toolbar { margin-top: 0; }
 
+  .diagout {
+    margin: -8px 0 20px; padding: 14px 16px; border: 1px solid var(--rule);
+    border-radius: 12px; background: var(--wash); color: var(--ink);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px; line-height: 1.55; white-space: pre-wrap;
+    word-break: break-word; max-height: 340px; overflow: auto;
+  }
+
   .donutgrid {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
     gap: 16px;
@@ -2232,12 +2240,16 @@ function drawStrategy() {
     '(seed vs exclude), converting audiences and search themes, conversion ' +
     'actions, existing video and image creative, live destinations, and the ' +
     'channel and device mix — and showcases it all right here.</div></div>' +
-    '<span id="stratStatus" class="ovr-state"></span></div>';
+    '<button class="linkbtn" id="stratDiag">Diagnose access</button>' +
+    '<span id="stratStatus" class="ovr-state"></span></div>' +
+    '<pre id="stratDiagOut" class="diagout" style="display:none"></pre>';
 
   var body = STRATEGY_DATA ? drawStrategyData(STRATEGY_DATA)
     : '<div class="empty">Nothing pulled yet. Click <strong>Pull all account ' +
       'data</strong> to mine the account and see everything here. This runs ' +
-      'several live queries.</div>';
+      'several live queries. Hitting a permission error? Click <strong>Diagnose ' +
+      'access</strong> above — it names the Google identity the tool runs as ' +
+      'and what it can reach.</div>';
   return action + body;
 }
 
@@ -2466,6 +2478,8 @@ function stratWhoBuys(header, rows) {
 function bindStrategy() {
   var buildBtn = document.getElementById('stratBuild');
   if (buildBtn) buildBtn.onclick = buildStrategyReco;
+  var diagBtn = document.getElementById('stratDiag');
+  if (diagBtn) diagBtn.onclick = runAccessDiagnostic;
   // Auto-load a previously built plan the first time the view opens.
   if (!STRATEGY_LOADED && !STRATEGY_DATA) {
     STRATEGY_LOADED = true;
@@ -2478,6 +2492,33 @@ function bindStrategy() {
         .getStrategyData(CURRENT_ACCOUNT);
     }
   }
+}
+
+// Runs the server-side access diagnostic and prints it in the card, so a 403
+// is debuggable without opening the Apps Script editor. It reports the Google
+// identity the web app runs as (the DEPLOYING account, not the viewer) and
+// which customers that identity can actually reach.
+function runAccessDiagnostic() {
+  var out = document.getElementById('stratDiagOut');
+  var btn = document.getElementById('stratDiag');
+  if (!(window.google && google.script && google.script.run)) {
+    if (out) { out.style.display = 'block';
+      out.textContent = 'Diagnostics need the deployed web app.'; }
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Diagnosing…'; }
+  if (out) { out.style.display = 'block'; out.textContent = 'Running…'; }
+  google.script.run
+    .withSuccessHandler(function(text) {
+      if (out) out.textContent = text || '(no output)';
+      if (btn) { btn.disabled = false; btn.textContent = 'Diagnose access'; }
+    })
+    .withFailureHandler(function(e) {
+      if (out) out.textContent = 'Diagnostic failed: ' +
+          (e && e.message ? e.message : String(e));
+      if (btn) { btn.disabled = false; btn.textContent = 'Diagnose access'; }
+    })
+    .diagnoseAccess(CURRENT_ACCOUNT);
 }
 
 function buildStrategyReco() {
