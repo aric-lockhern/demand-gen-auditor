@@ -160,6 +160,7 @@
     display: flex; gap: 10px; align-items: center; margin-bottom: 16px;
     flex-wrap: wrap;
   }
+  .toolbar:empty { display: none; }
   .toolbar input, .toolbar select {
     padding: 9px 13px; border: 1px solid var(--rule); border-radius: 9px;
     font-family: var(--sans); font-size: 14px; background: var(--card);
@@ -283,6 +284,37 @@
     color: var(--ink); border-bottom-color: var(--ink);
   }
   nav.subtabs .tally { opacity: .55; }
+
+  /* Collapsible sections: each view in a group is one accordion section. */
+  .acc-wrap { display: flex; flex-direction: column; gap: 12px; }
+  .acc {
+    background: var(--card); border: 1px solid var(--rule); border-radius: 14px;
+    box-shadow: var(--lift); overflow: hidden;
+  }
+  .acc-head {
+    width: 100%; display: flex; align-items: center; gap: 10px;
+    background: none; border: none; cursor: pointer; text-align: left;
+    padding: 15px 18px; font-family: var(--sans);
+  }
+  .acc-head:hover { background: var(--wash); }
+  .acc-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .acc-title {
+    font-family: var(--display); font-size: 16px; font-weight: 600;
+    letter-spacing: -.01em; color: var(--ink);
+  }
+  .acc-head .tally {
+    font-size: 12.5px; font-weight: 500; color: var(--muted);
+    background: var(--wash); border-radius: 20px; padding: 1px 9px;
+  }
+  .acc-chev {
+    margin-left: auto; width: 9px; height: 9px; flex: none;
+    border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+    transform: rotate(45deg); transition: transform .15s ease;
+  }
+  .acc.collapsed .acc-chev { transform: rotate(-45deg); }
+  .acc-body { padding: 0 18px 18px; }
+  .acc.collapsed .acc-body { display: none; }
+  .acc-body .toolbar { margin-top: 0; }
 
   .donutgrid {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
@@ -882,9 +914,7 @@ document.getElementById('root').innerHTML =
     '<span class="mode-hint" id="modeHint"></span></div>' +
   '<div class="kpis analyze-only" id="kpis"></div>' +
   '<nav class="tabs" id="tabs"></nav>' +
-  '<nav class="subtabs" id="subtabs"></nav>' +
-  '<div class="toolbar" id="toolbar"></div>' +
-  '<div id="panels"></div>' +
+  '<div class="acc-wrap" id="accordion"></div>' +
   '<div class="note" id="note"></div>' +
   BUILD_SECTION_HTML() +
   BUILD_WIZARD_HTML();
@@ -3020,16 +3050,9 @@ function syncWizardCopy() {
     : 'Generates the on-brand Google Slides audit deck from the pulled data.';
 }
 
-function buildPanels() {
-  var panels = document.getElementById('panels');
-  panels.innerHTML = '';
-  Object.keys(VIEWS).forEach(function(id) {
-    var panel = document.createElement('div');
-    panel.className = 'panel';
-    panel.id = 'panel-' + id;
-    panels.appendChild(panel);
-  });
-}
+// Panels are now created on demand inside the open accordion section, so there
+// is nothing to pre-build. Kept as a no-op so existing call sites stay valid.
+function buildPanels() {}
 
 function selectView(id) {
   ACTIVE = id;
@@ -3041,11 +3064,9 @@ function selectView(id) {
 
 function buildNav() {
   var tabs = document.getElementById('tabs');
-  var subtabs = document.getElementById('subtabs');
   var mg = modeGroups();
   var activeGroup = groupOf(ACTIVE);
   tabs.innerHTML = '';
-  subtabs.innerHTML = '';
 
   mg.forEach(function(group, index) {
     var available = group.views.filter(function(id) { return VIEWS[id]; });
@@ -3054,38 +3075,85 @@ function buildNav() {
     var btn = document.createElement('button');
     btn.textContent = group.label;
     btn.setAttribute('aria-selected', String(index === activeGroup));
-    btn.onclick = function() { selectView(available[0]); };
+    btn.onclick = function() {
+      // Jump to a group: open its first section, collapse the rest.
+      selectView(available[0]);
+    };
     tabs.appendChild(btn);
   });
 
-  // A single group in the mode needs no top row; a single view needs no sub row.
+  // A single group in the mode needs no top row.
   if (mg.length < 2) tabs.style.display = 'none';
   else tabs.style.display = '';
 
-  var current = (mg[activeGroup] || mg[0] || { views: [] }).views
-      .filter(function(id) { return VIEWS[id]; });
-  if (current.length < 2) return;
+  buildAccordion();
+}
 
-  current.forEach(function(id) {
+// Each view in the active group is a collapsible section. Exactly one is open
+// at a time (the ACTIVE view); its body carries that view's toolbar and panel,
+// so every section keeps its own filters and sort unambiguous.
+function buildAccordion() {
+  var acc = document.getElementById('accordion');
+  if (!acc) return;
+  var mg = modeGroups();
+  var activeGroup = groupOf(ACTIVE);
+  var group = mg[activeGroup] || mg[0] || { views: [] };
+  var views = group.views.filter(function(id) { return VIEWS[id]; });
+  acc.innerHTML = '';
+
+  views.forEach(function(id) {
     var view = VIEWS[id];
-    var btn = document.createElement('button');
-    btn.innerHTML = view.label + ' <span class="tally">' + view.rows().length +
-        '</span>';
-    btn.setAttribute('aria-selected', String(id === ACTIVE));
-    btn.onclick = function() { selectView(id); };
-    subtabs.appendChild(btn);
+    var open = (id === ACTIVE);
+    var section = document.createElement('section');
+    section.className = 'acc' + (open ? '' : ' collapsed');
+
+    var head = document.createElement('button');
+    head.className = 'acc-head';
+    head.innerHTML = '<span class="acc-title">' + esc(view.label) + '</span>' +
+        '<span class="tally">' + view.rows().length + '</span>' +
+        '<span class="acc-chev" aria-hidden="true"></span>';
+    head.setAttribute('aria-expanded', String(open));
+    head.onclick = function() {
+      if (id === ACTIVE) {
+        // Collapse the open section — nothing is active.
+        ACTIVE = null;
+        buildAccordion();
+      } else {
+        selectView(id);
+      }
+    };
+    section.appendChild(head);
+
+    var body = document.createElement('div');
+    body.className = 'acc-body';
+    if (open) {
+      var tb = document.createElement('div');
+      tb.className = 'toolbar';
+      tb.id = 'toolbar';
+      body.appendChild(tb);
+      var panel = document.createElement('div');
+      panel.className = 'panel active';
+      panel.id = 'panel-' + id;
+      body.appendChild(panel);
+    }
+    section.appendChild(body);
+    acc.appendChild(section);
   });
 }
 
 function buildToolbar() {
   var bar = document.getElementById('toolbar');
+  // No open section (every accordion row collapsed) — nothing to fill.
+  if (!bar || !ACTIVE) return;
   var isVideo = ACTIVE === 'videos';
 
   // The storyboard is a review surface, not a data table — no filters or sort.
   if (ACTIVE === 'story') { bar.innerHTML = ''; return; }
 
-  // Surfaces has no name search; it has a metric selector driving the donuts.
-  if (ACTIVE === 'settings' || ACTIVE === 'landingPages') {
+  // These views are showcases, not filterable tables: a count, no search box.
+  if (ACTIVE === 'settings' || ACTIVE === 'landingPages' ||
+      ACTIVE === 'strategy' || ACTIVE === 'aiAnalysis' ||
+      ACTIVE === 'audienceValidation') {
     bar.innerHTML = '<span class="count" id="count"></span>';
     return;
   }
@@ -3286,12 +3354,10 @@ function bindStoryboard() {
 }
 
 function render() {
-  Object.keys(VIEWS).forEach(function(id) {
-    document.getElementById('panel-' + id).className =
-        'panel' + (id === ACTIVE ? ' active' : '');
-  });
-
+  // Only the open section has a panel node; nothing to render when collapsed.
+  if (!ACTIVE) return;
   var panel = document.getElementById('panel-' + ACTIVE);
+  if (!panel) return;
   var searchBox = document.getElementById('search');
   var term = searchBox ? searchBox.value.toLowerCase().trim() : '';
 
