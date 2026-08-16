@@ -2964,6 +2964,10 @@ function buildDeckPrompt_(data) {
           ? 'the whole account (all non Demand Gen campaigns)'
           : 'campaign id(s) ' + cmp.selection;
     }
+    if (cmp.brandSource && cmp.brandSource.indexOf('manual') !== -1) {
+      benchDesc += ', with brand revenue by age supplied by the analyst from ' +
+          'GA4 / Shopify (Google Ads reports no demographics for this account)';
+    }
     push('The brand benchmark is ' + benchDesc + '. Window ' + cmp.window.start +
         ' to ' + cmp.window.end + '. Use these exact figures on slide 10. INDEX is ' +
         'Demand Gen spend share divided by brand revenue share: above 1.0 is over-' +
@@ -3827,9 +3831,10 @@ function compareBands_(order, brand, dg) {
       dgSpend: d.cost,
       dgSpendShare: dgSpendShare,
       // Spend share / revenue share. >1 = DG overbuys this group vs where the
-      // brand earns; <1 = underbuys. Null when there is no brand revenue to
-      // index against, so the UI can show a dash rather than a fake 0.
-      index: brandRevShare ? dgSpendShare / brandRevShare : null
+      // brand earns; <1 = underbuys. Null when there is no brand revenue OR no
+      // Demand Gen spend to index against (e.g. a no-DG account), so the UI
+      // shows a dash rather than a fake 0.
+      index: (brandRevShare && dgSpendTotal) ? dgSpendShare / brandRevShare : null
     };
   });
   return rows.filter(function(row) {
@@ -3867,10 +3872,29 @@ function buildBrandComparison(customerId, idsCsv) {
 
     var brand = pullDemoRaw_('Brand', brandWhere_(sel), range.current);
     var dg = pullDemoRaw_('DG', DGEN, range.current);
+
+    // Fold in manually-entered brand demographics (GA4 / Shopify) when present.
+    // Search, Shopping and Performance Max do not report age/gender in Ads, so
+    // for those accounts the demand curve has to come from outside Google Ads.
+    var manual = readBrandDemoManual_(id);
+    var brandSource = 'google ads';
+    if (manual && (Object.keys(manual.age || {}).length ||
+        Object.keys(manual.gender || {}).length)) {
+      ['age', 'gender'].forEach(function(dim) {
+        var m = manual[dim] || {};
+        Object.keys(m).forEach(function(band) {
+          if (!brand[dim][band]) brand[dim][band] = { cost: 0, conversions: 0, revenue: 0 };
+          brand[dim][band].revenue = Number(m[band]) || 0;
+        });
+      });
+      brandSource = 'manual (GA4 / Shopify)';
+    }
+
     var result = {
       selection: sel,
       mode: mode,
       matched: matched,
+      brandSource: brandSource,
       window: { start: range.start, end: range.end },
       age: compareBands_(AGE_BANDS, brand.age, dg.age),
       gender: compareBands_(GENDER_BANDS, brand.gender, dg.gender),
@@ -3896,6 +3920,43 @@ function ensureBrandComparison(customerId) {
     return { ok: true, data: existing, cached: true };
   }
   return buildBrandComparison(customerId, 'AUTO');
+}
+
+/** Manually-entered brand revenue by band (from GA4 / Shopify), or null. */
+function readBrandDemoManual_(customerId) {
+  var ov = readOverrides_();
+  var raw = ov['brandDemoManual::' + digits_(customerId)];
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (e) { return null; }
+}
+
+/**
+ * Save a manual brand demand curve (revenue by age/gender band) and rebuild the
+ * comparison so the audience-validation slide fills even when Google Ads has no
+ * demographics for the account. `dataJson` is { age:{band:rev}, gender:{...} }.
+ * Client-callable.
+ */
+function saveBrandDemographics(customerId, dataJson) {
+  try {
+    var id = ensureAccountContext_(customerId);
+    var data = typeof dataJson === 'string' ? JSON.parse(dataJson) : (dataJson || {});
+    var clean = { age: {}, gender: {} };
+    AGE_BANDS.forEach(function(b) {
+      var v = data.age && data.age[b];
+      if (v != null && v !== '' && !isNaN(Number(v))) clean.age[b] = Number(v);
+    });
+    GENDER_BANDS.forEach(function(b) {
+      var v = data.gender && data.gender[b];
+      if (v != null && v !== '' && !isNaN(Number(v))) clean.gender[b] = Number(v);
+    });
+    var any = Object.keys(clean.age).length || Object.keys(clean.gender).length;
+    if (any) saveOverride('brandDemoManual::' + id, JSON.stringify(clean));
+    else saveOverride('brandDemoManual::' + id, '');   // cleared
+    var sel = readBrandSelection_(id) || 'ALL';
+    return buildBrandComparison(customerId, sel);
+  } catch (e) {
+    return { ok: false, error: String(e.message || e).slice(0, 300) };
+  }
 }
 
 /** The saved comparison data for an account, parsed, or null. */
