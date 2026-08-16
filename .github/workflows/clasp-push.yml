@@ -1,0 +1,68 @@
+name: Sync to Apps Script
+
+# Pushes the code in this repo into your bound Apps Script project via clasp,
+# so you never paste code by hand again. Runs on every push that touches the
+# script files, and can be run on demand from the Actions tab.
+on:
+  push:
+    branches: [main, master, "claude/**"]
+    paths:
+      - "Code.gs"
+      - "Index.html"
+      - "appsscript.json"
+      - ".claspignore"
+      - ".github/workflows/clasp-push.yml"
+  workflow_dispatch:
+
+# One sync at a time; newer pushes cancel an in-flight one.
+concurrency:
+  group: clasp-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install clasp
+        run: npm install -g @google/clasp@2.4.2
+
+      - name: Write clasp project config
+        env:
+          SCRIPT_ID: ${{ vars.CLASP_SCRIPT_ID }}
+        run: |
+          if [ -z "$SCRIPT_ID" ]; then
+            echo "::error::Repository variable CLASP_SCRIPT_ID is not set. See DEPLOY.md step 1."
+            exit 1
+          fi
+          printf '{ "scriptId": "%s", "rootDir": "." }\n' "$SCRIPT_ID" > .clasp.json
+
+      - name: Write clasp credentials
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ]; then
+            echo "::error::Secret CLASPRC_JSON is not set. See DEPLOY.md step 3."
+            exit 1
+          fi
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+
+      - name: Push code into Apps Script
+        run: clasp push --force
+
+      # OPTIONAL: also refresh the live web app so the /exec URL serves the new
+      # code. Set repository Variable CLASP_DEPLOYMENT_ID to your web-app
+      # deployment id to enable this. Leave it unset to only sync the code.
+      - name: Update web app deployment
+        if: ${{ vars.CLASP_DEPLOYMENT_ID != '' }}
+        run: |
+          clasp deploy \
+            --deploymentId "${{ vars.CLASP_DEPLOYMENT_ID }}" \
+            --description "CI ${{ github.sha }}"

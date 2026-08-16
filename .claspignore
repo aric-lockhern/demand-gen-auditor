@@ -1,0 +1,9 @@
+# clasp pushes everything NOT ignored here. Ignore all, then allow only the
+# three files that actually make up the Apps Script project, so the module in
+# integrations/ (a .gs file for a DIFFERENT project) and the docs never get
+# pushed into the live script.
+**/**
+
+!appsscript.json
+!Code.gs
+!Index.html
