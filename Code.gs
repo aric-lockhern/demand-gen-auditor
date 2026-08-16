@@ -3810,6 +3810,43 @@ function pullDemoRaw_(label, whereClause, dateClause) {
   return out;
 }
 
+/**
+ * Age + gender spend/revenue for a set of campaign ids, keyed by clean band
+ * label. Splits by campaign.id IN(…), which age_range_view / gender_view honor
+ * (unlike an advertising_channel_type filter). Ids are chunked to keep the
+ * query short.
+ */
+function pullDemoByIds_(label, ids, dateClause) {
+  var out = { age: {}, gender: {} };
+  var idList = (ids || []).map(digits_).filter(function(x) { return x.length >= 3; });
+  if (!idList.length) return out;
+  var specs = [
+    { view: 'age_range_view', dim: 'age',
+      field: 'ad_group_criterion.age_range.type',
+      path: 'adGroupCriterion.ageRange.type', band: ageBand_ },
+    { view: 'gender_view', dim: 'gender',
+      field: 'ad_group_criterion.gender.type',
+      path: 'adGroupCriterion.gender.type', band: genderBand_ }
+  ];
+  specs.forEach(function(s) {
+    chunk_(idList, 200).forEach(function(batch) {
+      var rows = gaql_(label + ' ' + s.dim, s.view,
+          ['campaign.id', s.field, 'metrics.cost_micros', 'metrics.conversions',
+           'metrics.conversions_value'],
+          [], 'campaign.id IN (' + batch.join(', ') + ') AND ' + dateClause);
+      rows.forEach(function(r) {
+        var key = s.band(get_(r, s.path));
+        var bucket = out[s.dim][key] ||
+            (out[s.dim][key] = { cost: 0, conversions: 0, revenue: 0 });
+        bucket.cost += micros_(get_(r, 'metrics.costMicros'));
+        bucket.conversions += num_(get_(r, 'metrics.conversions'));
+        bucket.revenue += num_(get_(r, 'metrics.conversionsValue'));
+      });
+    });
+  });
+  return out;
+}
+
 /** Per-band comparison rows: brand revenue share vs DG spend share + index. */
 function compareBands_(order, brand, dg) {
   var brandRevTotal = 0, dgSpendTotal = 0;
@@ -3853,29 +3890,53 @@ function buildBrandComparison(customerId, idsCsv) {
     var id = ensureAccountContext_(customerId);
     var range = buildDateRange_();
 
+    // Demographic views are split by CAMPAIGN ID, not by an
+    // advertising_channel_type filter: age_range_view / gender_view do not honor
+    // a channel-type WHERE, which silently returned zero rows. campaign.id IN(…)
+    // is universally supported and matches how the Ads UI scopes demographics.
+    var camps = allCampaignsForBrand_();
+    function isDg_(c) {
+      return String(c.channel || '').toUpperCase().indexOf('DEMAND') !== -1;
+    }
+    var dgIds = camps.filter(isDg_).map(function(c) { return c.id; });
+    var nonDgIds = camps.filter(function(c) { return !isDg_(c); })
+        .map(function(c) { return c.id; });
+
     // AUTO (or empty): detect brand campaigns by name, and fall back to the
-    // whole account when none can be inferred, so the slide always fills.
+    // whole account (all non-DG) when none can be inferred, so the slide fills.
     var sel = String(idsCsv || '').trim();
     var mode = 'manual';
     var matched = [];
+    var brandIds;
     if (!sel || sel.toUpperCase() === 'AUTO') {
-      var hits = inferBrandCampaigns_(allCampaignsForBrand_());
+      var hits = inferBrandCampaigns_(camps);
       if (hits.length) {
-        sel = hits.map(function(c) { return c.id; }).join(',');
+        brandIds = hits.map(function(c) { return c.id; });
         matched = hits.map(function(c) { return c.name; });
+        sel = brandIds.join(',');
         mode = 'brand-inferred';
       } else {
+        brandIds = nonDgIds;
         sel = 'ALL';
         mode = 'account-wide-fallback';
       }
+    } else if (sel.toUpperCase() === 'ALL') {
+      brandIds = nonDgIds;   // whole account, all non Demand Gen
+    } else {
+      brandIds = sel.split(/[,\s]+/).map(digits_)
+          .filter(function(x) { return x.length >= 3; });
     }
 
-    var brand = pullDemoRaw_('Brand', brandWhere_(sel), range.current);
-    var dg = pullDemoRaw_('DG', DGEN, range.current);
+    var brand = pullDemoByIds_('Brand', brandIds, range.current);
+    var dg = pullDemoByIds_('DG', dgIds, range.current);
+    var counts = {
+      brandCampaigns: brandIds.length, dgCampaigns: dgIds.length,
+      brandAgeRows: Object.keys(brand.age).length,
+      dgAgeRows: Object.keys(dg.age).length
+    };
 
-    // Fold in manually-entered brand demographics (GA4 / Shopify) when present.
-    // Search, Shopping and Performance Max do not report age/gender in Ads, so
-    // for those accounts the demand curve has to come from outside Google Ads.
+    // Fold in manually-entered brand demographics (GA4 / Shopify) when present —
+    // the fallback when an account genuinely has no demographic rows in Ads.
     var manual = readBrandDemoManual_(id);
     var brandSource = 'google ads';
     if (manual && (Object.keys(manual.age || {}).length ||
@@ -3895,6 +3956,7 @@ function buildBrandComparison(customerId, idsCsv) {
       mode: mode,
       matched: matched,
       brandSource: brandSource,
+      counts: counts,
       window: { start: range.start, end: range.end },
       age: compareBands_(AGE_BANDS, brand.age, dg.age),
       gender: compareBands_(GENDER_BANDS, brand.gender, dg.gender),

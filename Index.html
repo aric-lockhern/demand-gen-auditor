@@ -2209,13 +2209,16 @@ function drawCompareTables(cmp) {
   // gender. Explain it rather than showing a bare "No data".
   var noAge = !(cmp.age || []).length, noGender = !(cmp.gender || []).length;
   if (noAge && noGender) {
+    var c = cmp.counts || {};
     head += '<div class="empty" style="text-align:left;line-height:1.55">' +
-      '<strong>No age or gender data in Google Ads for this account.</strong> ' +
-      'Search, Shopping and Performance Max campaigns do not report demographics ' +
-      '— only Display, Video and Demand Gen do. To build this comparison you ' +
-      'need a brand demand curve from <strong>GA4 or Shopify</strong> (revenue ' +
-      'by age band). Paste it with <strong>Enter brand demographics</strong> ' +
-      'below and the slide fills itself.' +
+      '<strong>No demographic rows came back for this benchmark.</strong> ' +
+      (c.brandCampaigns != null
+        ? '(Checked ' + c.brandCampaigns + ' brand campaign(s) and ' +
+          (c.dgCampaigns || 0) + ' Demand Gen campaign(s).) '
+        : '') +
+      'Some campaign types report no age/gender at all. You can supply the ' +
+      'brand demand curve manually from <strong>GA4 or Shopify</strong> (revenue ' +
+      'by age band) and the slide fills itself.' +
       '<div style="margin-top:12px">' +
       '<button class="briefbtn" id="manualDemoBtn" style="border-color:' +
       'var(--accent);color:var(--accent);font-weight:600">Enter brand ' +
