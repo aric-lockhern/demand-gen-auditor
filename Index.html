@@ -2033,6 +2033,7 @@ function adGroupSection() {
 // State is per-account. The selection and the last computed comparison persist
 // server-side as overrides, so they survive reloads and flow into the deck.
 var BRAND_CAMPAIGNS = null;   // Loaded lazily via listAllCampaigns (live query).
+var BRAND_AUTO_TRIED = false; // So the auto-detect only fires once per view open.
 var BRAND_SELECTION = ovrGet('brandCampaigns::' + CURRENT_ACCOUNT);
 var BRAND_COMPARE = (function() {
   var raw = ovrGet('brandCompareData::' + CURRENT_ACCOUNT);
@@ -2056,15 +2057,17 @@ function drawAudienceValidation() {
   document.getElementById('count').textContent =
       BRAND_COMPARE ? 'compared' : 'not run yet';
   var intro = '<div class="rb-sub" style="margin:0 0 14px">Validate where ' +
-    'Demand Gen spends against where the brand actually earns. Pick the brand ' +
-    'benchmark — one campaign, several, or the whole account (all non ' +
-    'Demand Gen). <strong>Index</strong> is DG spend share divided by brand ' +
-    'revenue share: above 1.0 means DG overbuys that group relative to where ' +
-    'brand revenue sits, below 1.0 means it underbuys.</div>';
+    'Demand Gen spends against where the brand actually earns. This ' +
+    '<strong>auto-detects your brand campaigns by name</strong> (and falls back ' +
+    'to the whole account if none are found); override the benchmark below if ' +
+    'you want specific campaigns. <strong>Index</strong> is DG spend share ' +
+    'divided by brand revenue share: above 1.0 means DG overbuys that group ' +
+    'relative to where brand revenue sits, below 1.0 means it underbuys.</div>';
   var results = BRAND_COMPARE
     ? drawCompareTables(BRAND_COMPARE)
-    : '<div class="empty" style="margin-top:14px">No comparison yet. Choose a ' +
-      'brand benchmark above, then Compare.</div>';
+    : '<div class="empty" style="margin-top:14px">Detecting brand campaigns and ' +
+      'running the comparison… If nothing appears, use the benchmark picker ' +
+      'above.</div>';
   return intro + drawBrandPicker() + results;
 }
 
@@ -2077,10 +2080,15 @@ function drawBrandPicker() {
 
   if (!BRAND_CAMPAIGNS) {
     return wrap +
-      '<p class="meta" style="margin:8px 0 12px">Load the account’s ' +
-      'campaigns to choose which one(s) stand in for the brand — usually a ' +
-      'branded Search campaign. This runs a live query.</p>' +
-      '<button class="briefbtn" id="loadCampBtn">Load campaigns</button>' +
+      '<p class="meta" style="margin:8px 0 12px">Brand campaigns are detected ' +
+      'automatically by name. Use <strong>Auto-detect &amp; compare</strong> to ' +
+      'run it, or <strong>Load campaigns</strong> to pick specific ones by hand. ' +
+      'Both run a live query.</p>' +
+      '<button class="briefbtn" id="autoBrandBtn" style="border-color:' +
+      'var(--accent);color:var(--accent);font-weight:600">Auto-detect &amp; ' +
+      'compare</button> ' +
+      '<button class="linkbtn" id="loadCampBtn">Load campaigns to pick manually' +
+      '</button>' +
       (sel ? '<div class="meta" style="margin-top:10px">Saved benchmark: ' +
         esc(whole ? 'Whole account (all non Demand Gen)' : sel) + '</div>' : '') +
       '<span id="brandStatus" class="ovr-state" style="margin-left:10px"></span>' +
@@ -2103,16 +2111,26 @@ function drawBrandPicker() {
     (whole ? ';opacity:.4;pointer-events:none' : '') + '">' + opts + '</select>' +
     '<div style="margin-top:12px"><button class="briefbtn" id="compareBtn" ' +
     'style="border-color:var(--accent);color:var(--accent);font-weight:600">' +
-    'Compare demographics</button>' +
+    'Compare demographics</button> ' +
+    '<button class="linkbtn" id="autoBrandBtn">Auto-detect instead</button>' +
     '<span id="brandStatus" class="ovr-state" style="margin-left:10px"></span>' +
     '</div></div>';
 }
 
 function drawCompareTables(cmp) {
-  var head = '<div class="meta" style="margin:2px 0 12px">Benchmark: ' +
-    esc(cmp.selection === 'ALL' ? 'Whole account (all non Demand Gen)'
-        : cmp.selection) + ' · ' + esc(cmp.window.start) + ' to ' +
-    esc(cmp.window.end) + '</div>';
+  var bench;
+  if (cmp.mode === 'brand-inferred') {
+    bench = 'Auto-detected brand campaign(s): ' +
+        esc((cmp.matched || []).join(', ') || cmp.selection);
+  } else if (cmp.mode === 'account-wide-fallback') {
+    bench = 'No named brand campaign found — using the whole account as a ' +
+        'demand proxy. Pick specific campaigns above to refine.';
+  } else {
+    bench = 'Benchmark: ' + esc(cmp.selection === 'ALL'
+        ? 'Whole account (all non Demand Gen)' : cmp.selection);
+  }
+  var head = '<div class="meta" style="margin:2px 0 12px">' + bench + ' · ' +
+    esc(cmp.window.start) + ' to ' + esc(cmp.window.end) + '</div>';
   return head + compareTable('Age', cmp.age) + compareTable('Gender', cmp.gender);
 }
 
@@ -2145,6 +2163,8 @@ function compareTable(header, rows) {
 function bindAudienceValidation() {
   var loadBtn = document.getElementById('loadCampBtn');
   if (loadBtn) loadBtn.onclick = loadBrandCampaigns;
+  var autoBtn = document.getElementById('autoBrandBtn');
+  if (autoBtn) autoBtn.onclick = function() { runBrandAuto(true); };
   var whole = document.getElementById('wholeAcct');
   if (whole) whole.onchange = function() {
     var s = document.getElementById('brandSel');
@@ -2155,6 +2175,44 @@ function bindAudienceValidation() {
   };
   var cmpBtn = document.getElementById('compareBtn');
   if (cmpBtn) cmpBtn.onclick = runCompare;
+
+  // First time the view opens with no saved comparison, auto-detect the brand
+  // campaigns and run it — no manual pick needed.
+  if (!BRAND_AUTO_TRIED && !BRAND_COMPARE) {
+    BRAND_AUTO_TRIED = true;
+    runBrandAuto(false);
+  }
+}
+
+// Detect brand campaigns by name and run the comparison (server falls back to
+// the whole account if none found). `force` re-runs even if data exists.
+function runBrandAuto(force) {
+  if (!force && BRAND_COMPARE) return;
+  if (!(window.google && google.script && google.script.run)) return;
+  var status = document.getElementById('brandStatus');
+  avState(status, 'detecting brand campaigns… (live query)', 'var(--muted)');
+  var runner = google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.ok) {
+        avState(status, (res && res.error) || 'auto-detect failed',
+            'var(--down)');
+        return;
+      }
+      BRAND_COMPARE = res.data;
+      BRAND_SELECTION = res.data.selection;
+      OVERRIDES['brandCompareData::' + CURRENT_ACCOUNT] = JSON.stringify(res.data);
+      OVERRIDES['brandCampaigns::' + CURRENT_ACCOUNT] = res.data.selection;
+      avState(status, res.data.mode === 'account-wide-fallback'
+          ? 'no brand campaign found — used whole account' : 'done',
+          res.data.mode === 'account-wide-fallback' ? 'var(--muted)' : 'var(--up)');
+      render();
+    })
+    .withFailureHandler(function(e) {
+      avState(status, String((e && e.message) || 'failed'), 'var(--down)');
+    });
+  // Force re-detects from scratch; the passive open uses any cached result.
+  if (force) runner.buildBrandComparison(CURRENT_ACCOUNT, 'AUTO');
+  else runner.ensureBrandComparison(CURRENT_ACCOUNT);
 }
 
 function loadBrandCampaigns() {

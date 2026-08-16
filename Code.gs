@@ -2951,9 +2951,20 @@ function buildDeckPrompt_(data) {
   if (cmp && ((cmp.age || []).length || (cmp.gender || []).length)) {
     push('## Brand vs Demand Gen demographics. Slide 10 (Audience validation).');
     push('');
-    push('The analyst picked the brand benchmark: ' +
-        (cmp.selection === 'ALL' ? 'the whole account (all non Demand Gen campaigns)'
-            : 'campaign id(s) ' + cmp.selection) + '. Window ' + cmp.window.start +
+    var benchDesc;
+    if (cmp.mode === 'brand-inferred') {
+      benchDesc = 'the brand campaigns detected automatically (' +
+          ((cmp.matched || []).join(', ') || cmp.selection) + ')';
+    } else if (cmp.mode === 'account-wide-fallback') {
+      benchDesc = 'the whole account (all non Demand Gen campaigns) — NO named ' +
+          'brand campaign was found, so this is an account-wide demand proxy, not ' +
+          'a true brand curve. Say "account-wide demand" on the slide, not "brand"';
+    } else {
+      benchDesc = cmp.selection === 'ALL'
+          ? 'the whole account (all non Demand Gen campaigns)'
+          : 'campaign id(s) ' + cmp.selection;
+    }
+    push('The brand benchmark is ' + benchDesc + '. Window ' + cmp.window.start +
         ' to ' + cmp.window.end + '. Use these exact figures on slide 10. INDEX is ' +
         'Demand Gen spend share divided by brand revenue share: above 1.0 is over-' +
         'spend for that group relative to where brand revenue sits, below 1.0 is ' +
@@ -3680,32 +3691,59 @@ function diagnoseAccess(customerId) {
 function listAllCampaigns(customerId) {
   try {
     ensureAccountContext_(customerId);
-    var range = buildDateRange_();
-    var rows = gaql_('All campaigns', 'campaign',
-        ['campaign.id', 'campaign.name', 'campaign.status',
-         'campaign.advertising_channel_type', 'metrics.cost_micros',
-         'metrics.conversions_value'],
-        [], range.current, 'metrics.cost_micros DESC');
-    var out = rows.map(function(r) {
-      return {
-        id: String(get_(r, 'campaign.id')),
-        name: get_(r, 'campaign.name'),
-        status: get_(r, 'campaign.status'),
-        channel: pretty_(get_(r, 'campaign.advertisingChannelType')),
-        cost: micros_(get_(r, 'metrics.costMicros')),
-        revenue: num_(get_(r, 'metrics.conversionsValue'))
-      };
-    });
-    // Enabled first, then by spend (the DESC order already sorts by spend).
+    var out = allCampaignsForBrand_();
+    // Enabled first, then by spend (the query already sorts by spend DESC).
     out.sort(function(a, b) {
       var ae = a.status === 'ENABLED' ? 0 : 1, be = b.status === 'ENABLED' ? 0 : 1;
       return ae !== be ? ae - be : b.cost - a.cost;
     });
     return { ok: true, campaigns: out,
+             inferred: inferBrandCampaigns_(out).map(function(c) { return c.id; }),
              selection: readBrandSelection_(customerId) };
   } catch (e) {
     return { ok: false, error: String(e.message || e).slice(0, 300) };
   }
+}
+
+/** Every campaign with channel + spend + revenue. Assumes context is set. */
+function allCampaignsForBrand_() {
+  var range = buildDateRange_();
+  var rows = gaql_('All campaigns', 'campaign',
+      ['campaign.id', 'campaign.name', 'campaign.status',
+       'campaign.advertising_channel_type', 'metrics.cost_micros',
+       'metrics.conversions_value'],
+      [], range.current, 'metrics.cost_micros DESC');
+  return rows.map(function(r) {
+    return {
+      id: String(get_(r, 'campaign.id')),
+      name: get_(r, 'campaign.name'),
+      status: get_(r, 'campaign.status'),
+      channel: pretty_(get_(r, 'campaign.advertisingChannelType')),
+      cost: micros_(get_(r, 'metrics.costMicros')),
+      revenue: num_(get_(r, 'metrics.conversionsValue'))
+    };
+  });
+}
+
+/**
+ * Which campaigns look like the brand benchmark, inferred from the name.
+ * Matches a whole-word "brand"/"branded" and rejects the usual opposites
+ * (generic, non-brand, competitor, prospecting). Demand Gen campaigns are never
+ * a brand benchmark. Prefers campaigns that actually earned revenue, since the
+ * slide indexes Demand Gen spend against brand REVENUE by age.
+ */
+function inferBrandCampaigns_(campaigns) {
+  var brandRe = /\bbrand(ed)?\b/i;
+  var negRe = /\b(non[\s-]?brand|generic|competitor|competition|prospect(ing)?)\b/i;
+  var hits = (campaigns || []).filter(function(c) {
+    var name = c.name || '';
+    if (!brandRe.test(name) || negRe.test(name)) return false;
+    return String(c.channel || '').toUpperCase().indexOf('DEMAND') === -1;
+  });
+  // If any brand campaign earned revenue, keep only those with revenue — a
+  // zero-revenue brand campaign contributes nothing to the demand curve.
+  var withRev = hits.filter(function(c) { return (c.revenue || 0) > 0; });
+  return withRev.length ? withRev : hits;
 }
 
 /** The saved brand-benchmark selection for an account: csv of ids, or 'ALL'. */
@@ -3799,22 +3837,55 @@ function buildBrandComparison(customerId, idsCsv) {
   try {
     var id = ensureAccountContext_(customerId);
     var range = buildDateRange_();
-    var brand = pullDemoRaw_('Brand', brandWhere_(idsCsv), range.current);
+
+    // AUTO (or empty): detect brand campaigns by name, and fall back to the
+    // whole account when none can be inferred, so the slide always fills.
+    var sel = String(idsCsv || '').trim();
+    var mode = 'manual';
+    var matched = [];
+    if (!sel || sel.toUpperCase() === 'AUTO') {
+      var hits = inferBrandCampaigns_(allCampaignsForBrand_());
+      if (hits.length) {
+        sel = hits.map(function(c) { return c.id; }).join(',');
+        matched = hits.map(function(c) { return c.name; });
+        mode = 'brand-inferred';
+      } else {
+        sel = 'ALL';
+        mode = 'account-wide-fallback';
+      }
+    }
+
+    var brand = pullDemoRaw_('Brand', brandWhere_(sel), range.current);
     var dg = pullDemoRaw_('DG', DGEN, range.current);
     var result = {
-      selection: String(idsCsv || 'ALL'),
+      selection: sel,
+      mode: mode,
+      matched: matched,
       window: { start: range.start, end: range.end },
       age: compareBands_(AGE_BANDS, brand.age, dg.age),
       gender: compareBands_(GENDER_BANDS, brand.gender, dg.gender),
       generated: Utilities.formatDate(new Date(),
           CONFIG.TIME_ZONE || 'America/New_York', 'MMM d, yyyy')
     };
-    saveOverride('brandCampaigns::' + id, String(idsCsv || 'ALL'));
+    saveOverride('brandCampaigns::' + id, sel);
     saveOverride('brandCompareData::' + id, JSON.stringify(result));
     return { ok: true, data: result };
   } catch (e) {
     return { ok: false, error: String(e.message || e).slice(0, 300) };
   }
+}
+
+/**
+ * Return the saved brand comparison, or auto-build one (detect brand campaigns
+ * by name, else fall back to the whole account). Client-callable; used to fill
+ * the audience-validation slide without a manual pick.
+ */
+function ensureBrandComparison(customerId) {
+  var existing = readBrandComparison_(customerId);
+  if (existing && ((existing.age || []).length || (existing.gender || []).length)) {
+    return { ok: true, data: existing, cached: true };
+  }
+  return buildBrandComparison(customerId, 'AUTO');
 }
 
 /** The saved comparison data for an account, parsed, or null. */
