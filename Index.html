@@ -2053,21 +2053,10 @@ function adGroupSection() {
 // ---------------------------------------------------------------------------
 // State is per-account. The selection and the last computed comparison persist
 // server-side as overrides, so they survive reloads and flow into the deck.
-var BRAND_CAMPAIGNS = null;   // Loaded lazily via listAllCampaigns (live query).
-var BRAND_AUTO_TRIED = false; // So the auto-detect only fires once per view open.
-var MANUAL_DEMO_OPEN = false; // Manual brand-demographics (GA4/Shopify) form open.
-var BRAND_SELECTION = ovrGet('brandCampaigns::' + CURRENT_ACCOUNT);
-var BRAND_COMPARE = (function() {
-  var raw = ovrGet('brandCompareData::' + CURRENT_ACCOUNT);
-  if (!raw) return null;
-  try { return JSON.parse(raw); } catch (e) { return null; }
-})();
-
-function csvToSet(csv) {
-  var out = {};
-  String(csv || '').split(/[,\s]+/).forEach(function(x) { if (x) out[x] = true; });
-  return out;
-}
+// The brand-vs-Demand-Gen demographic comparison now comes straight from the
+// account pull (payload) — no picker, no live query, no manual entry. It is
+// simply present after a Refresh.
+var BRAND_COMPARE = (DATA.audienceValidation || null);
 
 function avState(el, msg, color) {
   if (!el) return;
@@ -2077,152 +2066,33 @@ function avState(el, msg, color) {
 
 function drawAudienceValidation() {
   document.getElementById('count').textContent =
-      BRAND_COMPARE ? 'compared' : 'not run yet';
-  var intro = '<div class="rb-sub" style="margin:0 0 14px">Validate where ' +
-    'Demand Gen spends against where the brand actually earns. This ' +
-    '<strong>auto-detects your brand campaigns by name</strong> (and falls back ' +
-    'to the whole account if none are found); override the benchmark below if ' +
-    'you want specific campaigns. <strong>Index</strong> is DG spend share ' +
-    'divided by brand revenue share: above 1.0 means DG overbuys that group ' +
-    'relative to where brand revenue sits, below 1.0 means it underbuys.</div>';
-  var results = BRAND_COMPARE
-    ? drawCompareTables(BRAND_COMPARE)
-    : '<div class="empty" style="margin-top:14px">Detecting brand campaigns and ' +
-      'running the comparison… If nothing appears, use the benchmark picker ' +
-      'above.</div>';
-  return intro + drawBrandPicker() +
-    (MANUAL_DEMO_OPEN ? drawManualDemoForm() : '') + results;
-}
-
-// Manual brand demand curve (revenue by band) from GA4 / Shopify — the fix for
-// Search/Shopping/PMax accounts, where Google Ads reports no demographics.
-function drawManualDemoForm() {
-  var saved = {};
-  try { saved = JSON.parse(ovrGet('brandDemoManual::' + CURRENT_ACCOUNT) || '{}'); }
-  catch (e) {}
-  var age = saved.age || {}, gender = saved.gender || {};
-  function inputRow(dim, band) {
-    var v = (dim === 'age' ? age : gender)[band];
-    return '<div style="display:flex;align-items:center;gap:8px;margin:5px 0">' +
-      '<span style="width:64px;font-size:13px">' + esc(band) + '</span>' +
-      '<input type="number" min="0" step="any" data-dim="' + dim + '" ' +
-      'data-band="' + esc(band) + '" value="' +
-      (v == null ? '' : esc(String(v))) + '" placeholder="revenue" ' +
-      'style="flex:1;max-width:150px;padding:7px 10px;border:1px solid var(--rule);' +
-      'border-radius:8px;font:inherit"></div>';
+      (BRAND_COMPARE && (BRAND_COMPARE.age || []).length) ? 'compared' : 'no data';
+  var intro = '<div class="rb-sub" style="margin:0 0 14px">Where Demand Gen ' +
+    'spends against where the account earns, by age and gender. Pulled with the ' +
+    'account data: the whole account (all non Demand Gen campaigns) is the brand ' +
+    'demand curve, compared to Demand Gen spend. <strong>Index</strong> is DG ' +
+    'spend share divided by brand revenue share — above 1.0 means DG overbuys ' +
+    'that group relative to where revenue sits, below 1.0 means it underbuys.</div>';
+  if (!BRAND_COMPARE) {
+    return intro + '<div class="empty">Not in this pull yet. Click ' +
+      '<strong>Refresh</strong> at the top to pull it with the account data.</div>';
   }
-  var ageRows = ['18-24', '25-34', '35-44', '45-54', '55-64', '65+']
-      .map(function(b) { return inputRow('age', b); }).join('');
-  var genRows = ['Male', 'Female']
-      .map(function(b) { return inputRow('gender', b); }).join('');
-  return '<div class="card" style="margin:0 0 18px" id="manualDemoCard">' +
-    '<div class="section-label">Brand demographics (from GA4 or Shopify)</div>' +
-    '<div class="rb-sub" style="margin:2px 0 12px">Enter total <strong>revenue by ' +
-    'age band</strong> for the same window (gender optional). This becomes the ' +
-    'brand demand curve the Index compares Demand Gen spend against. Leave a band ' +
-    'blank to skip it.</div>' +
-    '<div style="display:flex;gap:36px;flex-wrap:wrap">' +
-    '<div><div class="subhead" style="margin-top:0">Age revenue</div>' + ageRows +
-    '</div>' +
-    '<div><div class="subhead" style="margin-top:0">Gender revenue (optional)</div>' +
-    genRows + '</div></div>' +
-    '<details style="margin-top:10px"><summary style="cursor:pointer;' +
-    'font-size:13px;color:var(--muted)">Or paste rows (band, revenue)</summary>' +
-    '<textarea id="manualDemoPaste" placeholder="18-24, 1234&#10;25-34, 5678" ' +
-    'style="width:100%;max-width:420px;height:88px;margin-top:8px;padding:8px;' +
-    'border:1px solid var(--rule);border-radius:8px;font:inherit"></textarea><br>' +
-    '<button class="linkbtn" id="manualDemoParse">Fill fields from paste</button>' +
-    '</details>' +
-    '<div style="margin-top:14px">' +
-    '<button class="briefbtn" id="manualDemoSave" style="border-color:var(--accent);' +
-    'color:var(--accent);font-weight:600">Save &amp; compare</button> ' +
-    '<button class="linkbtn" id="manualDemoCancel">Cancel</button>' +
-    '<span id="manualDemoStatus" class="ovr-state" style="margin-left:10px"></span>' +
-    '</div></div>';
-}
-
-function drawBrandPicker() {
-  var sel = BRAND_SELECTION || '';
-  var whole = sel.toUpperCase() === 'ALL';
-  var wrap = '<div style="border:1px solid var(--rule);background:var(--card);' +
-    'border-radius:12px;padding:16px;margin-bottom:16px">' +
-    '<div class="section-label">Brand benchmark</div>';
-
-  if (!BRAND_CAMPAIGNS) {
-    return wrap +
-      '<p class="meta" style="margin:8px 0 12px">Brand campaigns are detected ' +
-      'automatically by name. Use <strong>Auto-detect &amp; compare</strong> to ' +
-      'run it, or <strong>Load campaigns</strong> to pick specific ones by hand. ' +
-      'Both run a live query.</p>' +
-      '<button class="briefbtn" id="autoBrandBtn" style="border-color:' +
-      'var(--accent);color:var(--accent);font-weight:600">Auto-detect &amp; ' +
-      'compare</button> ' +
-      '<button class="linkbtn" id="loadCampBtn">Load campaigns to pick manually' +
-      '</button>' +
-      (sel ? '<div class="meta" style="margin-top:10px">Saved benchmark: ' +
-        esc(whole ? 'Whole account (all non Demand Gen)' : sel) + '</div>' : '') +
-      '<span id="brandStatus" class="ovr-state" style="margin-left:10px"></span>' +
-      '</div>';
-  }
-
-  var selIds = whole ? {} : csvToSet(sel);
-  var opts = BRAND_CAMPAIGNS.map(function(c) {
-    return '<option value="' + esc(c.id) + '"' +
-      (selIds[c.id] ? ' selected' : '') + '>' + esc(c.name) + '  ·  ' +
-      esc(c.channel) + '  ·  ' + money(c.cost) + '</option>';
-  }).join('');
-
-  return wrap +
-    '<label style="display:block;margin:6px 0 10px;font-size:13px">' +
-    '<input type="checkbox" id="wholeAcct"' + (whole ? ' checked' : '') + '> ' +
-    'Whole account (all non Demand Gen campaigns)</label>' +
-    '<select id="brandSel" multiple size="8" style="width:100%;max-width:600px;' +
-    'padding:8px;border:1px solid var(--rule);border-radius:9px;font:inherit' +
-    (whole ? ';opacity:.4;pointer-events:none' : '') + '">' + opts + '</select>' +
-    '<div style="margin-top:12px"><button class="briefbtn" id="compareBtn" ' +
-    'style="border-color:var(--accent);color:var(--accent);font-weight:600">' +
-    'Compare demographics</button> ' +
-    '<button class="linkbtn" id="autoBrandBtn">Auto-detect instead</button>' +
-    '<span id="brandStatus" class="ovr-state" style="margin-left:10px"></span>' +
-    '</div></div>';
+  return intro + drawCompareTables(BRAND_COMPARE);
 }
 
 function drawCompareTables(cmp) {
-  var bench;
-  if (cmp.mode === 'brand-inferred') {
-    bench = 'Auto-detected brand campaign(s): ' +
-        esc((cmp.matched || []).join(', ') || cmp.selection);
-  } else if (cmp.mode === 'account-wide-fallback') {
-    bench = 'No named brand campaign found — using the whole account as a ' +
-        'demand proxy. Pick specific campaigns above to refine.';
-  } else {
-    bench = 'Benchmark: ' + esc(cmp.selection === 'ALL'
-        ? 'Whole account (all non Demand Gen)' : cmp.selection);
-  }
-  if (cmp.brandSource && cmp.brandSource.indexOf('manual') !== -1) {
-    bench += ' · brand revenue from GA4 / Shopify (manual)';
-  }
-  var head = '<div class="meta" style="margin:2px 0 12px">' + bench + ' · ' +
-    esc(cmp.window.start) + ' to ' + esc(cmp.window.end) + '</div>';
-  // Both splits empty almost always means the account has no demographic data
-  // in Google Ads: Search, Shopping and Performance Max do not report age or
-  // gender. Explain it rather than showing a bare "No data".
+  var head = '<div class="meta" style="margin:2px 0 12px">Whole account (all ' +
+    'non Demand Gen) revenue vs Demand Gen spend · ' + esc(cmp.window.start) +
+    ' to ' + esc(cmp.window.end) + '</div>';
   var noAge = !(cmp.age || []).length, noGender = !(cmp.gender || []).length;
   if (noAge && noGender) {
     var c = cmp.counts || {};
     head += '<div class="empty" style="text-align:left;line-height:1.55">' +
-      '<strong>No demographic rows came back for this benchmark.</strong> ' +
+      'No age or gender rows came back for this account' +
       (c.brandCampaigns != null
-        ? '(Checked ' + c.brandCampaigns + ' brand campaign(s) and ' +
-          (c.dgCampaigns || 0) + ' Demand Gen campaign(s).) '
-        : '') +
-      'Some campaign types report no age/gender at all. You can supply the ' +
-      'brand demand curve manually from <strong>GA4 or Shopify</strong> (revenue ' +
-      'by age band) and the slide fills itself.' +
-      '<div style="margin-top:12px">' +
-      '<button class="briefbtn" id="manualDemoBtn" style="border-color:' +
-      'var(--accent);color:var(--accent);font-weight:600">Enter brand ' +
-      'demographics</button></div></div>';
+        ? ' (' + c.brandCampaigns + ' non-DG and ' + (c.dgCampaigns || 0) +
+          ' Demand Gen campaigns checked)' : '') + '. Some accounts do not ' +
+      'report demographics at all.</div>';
   }
   return head + compareTable('Age', cmp.age) + compareTable('Gender', cmp.gender);
 }
@@ -2253,188 +2123,8 @@ function compareTable(header, rows) {
     '</tr></thead><tbody>' + body + '</tbody></table></div>';
 }
 
-function bindAudienceValidation() {
-  var loadBtn = document.getElementById('loadCampBtn');
-  if (loadBtn) loadBtn.onclick = loadBrandCampaigns;
-  var autoBtn = document.getElementById('autoBrandBtn');
-  if (autoBtn) autoBtn.onclick = function() { runBrandAuto(true); };
-  var whole = document.getElementById('wholeAcct');
-  if (whole) whole.onchange = function() {
-    var s = document.getElementById('brandSel');
-    if (s) {
-      s.style.opacity = this.checked ? '.4' : '';
-      s.style.pointerEvents = this.checked ? 'none' : '';
-    }
-  };
-  var cmpBtn = document.getElementById('compareBtn');
-  if (cmpBtn) cmpBtn.onclick = runCompare;
-
-  // Manual brand-demographics form (GA4 / Shopify).
-  var mOpen = document.getElementById('manualDemoBtn');
-  if (mOpen) mOpen.onclick = function() { MANUAL_DEMO_OPEN = true; render(); };
-  var mCancel = document.getElementById('manualDemoCancel');
-  if (mCancel) mCancel.onclick = function() { MANUAL_DEMO_OPEN = false; render(); };
-  var mParse = document.getElementById('manualDemoParse');
-  if (mParse) mParse.onclick = parseManualDemo;
-  var mSave = document.getElementById('manualDemoSave');
-  if (mSave) mSave.onclick = saveManualDemo;
-
-  // First time the view opens with no saved comparison, auto-detect the brand
-  // campaigns and run it — no manual pick needed.
-  if (!BRAND_AUTO_TRIED && !BRAND_COMPARE) {
-    BRAND_AUTO_TRIED = true;
-    runBrandAuto(false);
-  }
-}
-
-// Detect brand campaigns by name and run the comparison (server falls back to
-// the whole account if none found). `force` re-runs even if data exists.
-function runBrandAuto(force) {
-  if (!force && BRAND_COMPARE) return;
-  if (!(window.google && google.script && google.script.run)) return;
-  var status = document.getElementById('brandStatus');
-  avState(status, 'detecting brand campaigns… (live query)', 'var(--muted)');
-  var runner = google.script.run
-    .withSuccessHandler(function(res) {
-      if (!res || !res.ok) {
-        avState(status, (res && res.error) || 'auto-detect failed',
-            'var(--down)');
-        return;
-      }
-      BRAND_COMPARE = res.data;
-      BRAND_SELECTION = res.data.selection;
-      OVERRIDES['brandCompareData::' + CURRENT_ACCOUNT] = JSON.stringify(res.data);
-      OVERRIDES['brandCampaigns::' + CURRENT_ACCOUNT] = res.data.selection;
-      avState(status, res.data.mode === 'account-wide-fallback'
-          ? 'no brand campaign found — used whole account' : 'done',
-          res.data.mode === 'account-wide-fallback' ? 'var(--muted)' : 'var(--up)');
-      render();
-    })
-    .withFailureHandler(function(e) {
-      avState(status, String((e && e.message) || 'failed'), 'var(--down)');
-    });
-  // Force re-detects from scratch; the passive open uses any cached result.
-  if (force) runner.buildBrandComparison(CURRENT_ACCOUNT, 'AUTO');
-  else runner.ensureBrandComparison(CURRENT_ACCOUNT);
-}
-
-function loadBrandCampaigns() {
-  var status = document.getElementById('brandStatus');
-  if (!(window.google && google.script && google.script.run)) {
-    avState(status, 'preview only', 'var(--down)'); return;
-  }
-  avState(status, 'loading…', 'var(--muted)');
-  google.script.run
-    .withSuccessHandler(function(res) {
-      if (!res || !res.ok) {
-        avState(status, (res && res.error) || 'failed', 'var(--down)'); return;
-      }
-      BRAND_CAMPAIGNS = res.campaigns || [];
-      if (res.selection) BRAND_SELECTION = res.selection;
-      avState(status, '', 'var(--muted)');
-      render();
-    })
-    .withFailureHandler(function(e) {
-      avState(status, String((e && e.message) || 'failed'), 'var(--down)');
-    })
-    .listAllCampaigns(CURRENT_ACCOUNT);
-}
-
-// Parse pasted "band, revenue" lines into the manual-demo inputs.
-function parseManualDemo() {
-  var ta = document.getElementById('manualDemoPaste');
-  if (!ta) return;
-  var inputs = document.querySelectorAll('#manualDemoCard input[data-band]');
-  ta.value.split(/\n/).forEach(function(line) {
-    var parts = line.split(/[,\t]/);
-    if (parts.length < 2) return;
-    var band = parts[0].trim().replace(/–|—/g, '-').replace(/\s/g, '');
-    var val = parseFloat(String(parts[1]).replace(/[^0-9.\-]/g, ''));
-    if (isNaN(val)) return;
-    for (var i = 0; i < inputs.length; i++) {
-      var b = inputs[i].getAttribute('data-band').toLowerCase().replace(/\s/g, '');
-      if (b === band.toLowerCase()) inputs[i].value = val;
-    }
-  });
-  toast('Filled from paste — review, then Save');
-}
-
-// Save the manual brand curve and rebuild the comparison.
-function saveManualDemo() {
-  var status = document.getElementById('manualDemoStatus');
-  var inputs = document.querySelectorAll('#manualDemoCard input[data-band]');
-  var data = { age: {}, gender: {} };
-  for (var i = 0; i < inputs.length; i++) {
-    var v = inputs[i].value;
-    if (v !== '' && !isNaN(parseFloat(v))) {
-      data[inputs[i].getAttribute('data-dim')][inputs[i].getAttribute('data-band')] =
-          parseFloat(v);
-    }
-  }
-  if (!Object.keys(data.age).length && !Object.keys(data.gender).length) {
-    avState(status, 'enter at least one age band', 'var(--down)'); return;
-  }
-  if (!(window.google && google.script && google.script.run)) {
-    avState(status, 'preview only', 'var(--down)'); return;
-  }
-  avState(status, 'saving & comparing… (live query)', 'var(--muted)');
-  google.script.run
-    .withSuccessHandler(function(res) {
-      if (!res || !res.ok) {
-        avState(status, (res && res.error) || 'failed', 'var(--down)'); return;
-      }
-      BRAND_COMPARE = res.data;
-      OVERRIDES['brandCompareData::' + CURRENT_ACCOUNT] = JSON.stringify(res.data);
-      OVERRIDES['brandDemoManual::' + CURRENT_ACCOUNT] = JSON.stringify(data);
-      MANUAL_DEMO_OPEN = false;
-      toast('Brand demographics saved — comparison updated');
-      render();
-    })
-    .withFailureHandler(function(e) {
-      avState(status, String((e && e.message) || 'failed'), 'var(--down)');
-    })
-    .saveBrandDemographics(CURRENT_ACCOUNT, JSON.stringify(data));
-}
-
-function runCompare() {
-  var status = document.getElementById('brandStatus');
-  var whole = document.getElementById('wholeAcct');
-  var sel = document.getElementById('brandSel');
-  var idsCsv;
-  if (whole && whole.checked) {
-    idsCsv = 'ALL';
-  } else {
-    var ids = [];
-    if (sel) for (var i = 0; i < sel.options.length; i++) {
-      if (sel.options[i].selected) ids.push(sel.options[i].value);
-    }
-    if (!ids.length) {
-      avState(status, 'pick at least one, or Whole account', 'var(--down)');
-      return;
-    }
-    idsCsv = ids.join(',');
-  }
-  BRAND_SELECTION = idsCsv;
-  if (!(window.google && google.script && google.script.run)) {
-    avState(status, 'preview only', 'var(--down)'); return;
-  }
-  avState(status, 'comparing… (live query)', 'var(--muted)');
-  google.script.run
-    .withSuccessHandler(function(res) {
-      if (!res || !res.ok) {
-        avState(status, (res && res.error) || 'failed', 'var(--down)'); return;
-      }
-      BRAND_COMPARE = res.data;
-      OVERRIDES['brandCompareData::' + CURRENT_ACCOUNT] = JSON.stringify(res.data);
-      OVERRIDES['brandCampaigns::' + CURRENT_ACCOUNT] = idsCsv;
-      avState(status, 'done', 'var(--up)');
-      render();
-    })
-    .withFailureHandler(function(e) {
-      avState(status, String((e && e.message) || 'failed'), 'var(--down)');
-    })
-    .buildBrandComparison(CURRENT_ACCOUNT, idsCsv);
-}
+// The comparison comes from the account pull now, so there is nothing to wire.
+function bindAudienceValidation() {}
 
 // ---------------------------------------------------------------------------
 // Strategy mode — no-Demand-Gen accounts (build a DG launch plan)

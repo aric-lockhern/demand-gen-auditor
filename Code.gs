@@ -713,6 +713,9 @@ function auditAccount_(customerId) {
   backfillVideoIdentity_(data.videos, assetUrls);
   data.creativePacking = packingOf_(data.ads);
   data.landingPages = landingPagesOf_(data.ads);
+  // Brand (all non-DG) vs Demand Gen demographics, pulled with the account so it
+  // is just there — no picker, no separate live query.
+  data.audienceValidation = buildDemoComparison_(range);
   backfillVideoQuartiles_(data.videos, data.ads);
   attachVideoConversions_(data.videos, data.ads, range.current);
   data.totals = rollup_(data.campaigns);
@@ -2959,28 +2962,12 @@ function buildDeckPrompt_(data) {
     });
     push('');
   }
-  var cmp = null;
-  try { cmp = readBrandComparison_(a.rawId); } catch (e) { cmp = null; }
+  var cmp = data.audienceValidation || null;
   if (cmp && ((cmp.age || []).length || (cmp.gender || []).length)) {
     push('## Brand vs Demand Gen demographics. Slide 10 (Audience validation).');
     push('');
-    var benchDesc;
-    if (cmp.mode === 'brand-inferred') {
-      benchDesc = 'the brand campaigns detected automatically (' +
-          ((cmp.matched || []).join(', ') || cmp.selection) + ')';
-    } else if (cmp.mode === 'account-wide-fallback') {
-      benchDesc = 'the whole account (all non Demand Gen campaigns) — NO named ' +
-          'brand campaign was found, so this is an account-wide demand proxy, not ' +
-          'a true brand curve. Say "account-wide demand" on the slide, not "brand"';
-    } else {
-      benchDesc = cmp.selection === 'ALL'
-          ? 'the whole account (all non Demand Gen campaigns)'
-          : 'campaign id(s) ' + cmp.selection;
-    }
-    if (cmp.brandSource && cmp.brandSource.indexOf('manual') !== -1) {
-      benchDesc += ', with brand revenue by age supplied by the analyst from ' +
-          'GA4 / Shopify (Google Ads reports no demographics for this account)';
-    }
+    var benchDesc = 'the whole account (all non Demand Gen campaigns) as the ' +
+        'brand demand curve, compared to Demand Gen spend';
     push('The brand benchmark is ' + benchDesc + '. Window ' + cmp.window.start +
         ' to ' + cmp.window.end + '. Use these exact figures on slide 10. INDEX is ' +
         'Demand Gen spend share divided by brand revenue share: above 1.0 is over-' +
@@ -3435,14 +3422,12 @@ function buildStoryboard_(data) {
     { key: 'audienceValidation', kind: 'audienceValidation',
       title: 'Audience validation (brand vs Demand Gen)',
       summary: (function() {
-        var cmp = null;
-        try { cmp = readBrandComparison_((data.account || {}).rawId); }
-        catch (e) { cmp = null; }
+        var cmp = data.audienceValidation;
         return cmp && (cmp.age || []).length
-          ? 'Brand revenue vs DG spend by age, index and brand ROAS. Benchmark: ' +
-            (cmp.selection === 'ALL' ? 'whole account' : cmp.selection) + '.'
-          : 'Pick a brand benchmark in Audience validation and run the compare to ' +
-            'fill this slide.';
+          ? 'Brand (all non Demand Gen) revenue vs DG spend by age, index and ' +
+            'brand ROAS. Pulled with the account.'
+          : 'No demographic rows in this account, so the slide stays a labelled ' +
+            'placeholder.';
       })() },
     { key: 'daily', kind: 'daily', title: 'Spend over time',
       summary: count(data.daily) + ' days of spend trend.' },
@@ -3893,20 +3878,18 @@ function compareBands_(order, brand, dg) {
 }
 
 /**
- * Live brand-vs-DG demographic comparison for the audience-validation slide.
- * `idsCsv` is a csv of campaign ids, or 'ALL' for the whole account (all non-DG
- * campaigns). Persists both the selection and the computed data (per account)
- * so the dashboard and the deck can reuse them. Client-callable.
+ * Brand (all non-Demand-Gen campaigns) vs Demand Gen demographics, by age and
+ * gender, for the audience-validation slide. Built during the account pull so it
+ * is always present — no picker, no separate live query. Assumes the API context
+ * is already set (called from within refresh()). `range` is the date range.
+ *
+ * Demographic views are split by CAMPAIGN ID, not by an advertising_channel_type
+ * filter: age_range_view / gender_view do not honor a channel-type WHERE (it
+ * silently returns zero rows). campaign.id IN(…) is universally supported and
+ * matches how the Ads UI scopes demographics.
  */
-function buildBrandComparison(customerId, idsCsv) {
+function buildDemoComparison_(range) {
   try {
-    var id = ensureAccountContext_(customerId);
-    var range = buildDateRange_();
-
-    // Demographic views are split by CAMPAIGN ID, not by an
-    // advertising_channel_type filter: age_range_view / gender_view do not honor
-    // a channel-type WHERE, which silently returned zero rows. campaign.id IN(…)
-    // is universally supported and matches how the Ads UI scopes demographics.
     var camps = allCampaignsForBrand_();
     function isDg_(c) {
       return String(c.channel || '').toUpperCase().indexOf('DEMAND') !== -1;
@@ -3915,131 +3898,22 @@ function buildBrandComparison(customerId, idsCsv) {
     var nonDgIds = camps.filter(function(c) { return !isDg_(c); })
         .map(function(c) { return c.id; });
 
-    // AUTO (or empty): detect brand campaigns by name, and fall back to the
-    // whole account (all non-DG) when none can be inferred, so the slide fills.
-    var sel = String(idsCsv || '').trim();
-    var mode = 'manual';
-    var matched = [];
-    var brandIds;
-    if (!sel || sel.toUpperCase() === 'AUTO') {
-      var hits = inferBrandCampaigns_(camps);
-      if (hits.length) {
-        brandIds = hits.map(function(c) { return c.id; });
-        matched = hits.map(function(c) { return c.name; });
-        sel = brandIds.join(',');
-        mode = 'brand-inferred';
-      } else {
-        brandIds = nonDgIds;
-        sel = 'ALL';
-        mode = 'account-wide-fallback';
-      }
-    } else if (sel.toUpperCase() === 'ALL') {
-      brandIds = nonDgIds;   // whole account, all non Demand Gen
-    } else {
-      brandIds = sel.split(/[,\s]+/).map(digits_)
-          .filter(function(x) { return x.length >= 3; });
-    }
-
-    var brand = pullDemoByIds_('Brand', brandIds, range.current);
-    var dg = pullDemoByIds_('DG', dgIds, range.current);
-    var counts = {
-      brandCampaigns: brandIds.length, dgCampaigns: dgIds.length,
-      brandAgeRows: Object.keys(brand.age).length,
-      dgAgeRows: Object.keys(dg.age).length
-    };
-
-    // Fold in manually-entered brand demographics (GA4 / Shopify) when present —
-    // the fallback when an account genuinely has no demographic rows in Ads.
-    var manual = readBrandDemoManual_(id);
-    var brandSource = 'google ads';
-    if (manual && (Object.keys(manual.age || {}).length ||
-        Object.keys(manual.gender || {}).length)) {
-      ['age', 'gender'].forEach(function(dim) {
-        var m = manual[dim] || {};
-        Object.keys(m).forEach(function(band) {
-          if (!brand[dim][band]) brand[dim][band] = { cost: 0, conversions: 0, revenue: 0 };
-          brand[dim][band].revenue = Number(m[band]) || 0;
-        });
-      });
-      brandSource = 'manual (GA4 / Shopify)';
-    }
-
-    var result = {
-      selection: sel,
-      mode: mode,
-      matched: matched,
-      brandSource: brandSource,
-      counts: counts,
+    var brand = pullDemoByIds_('Brand demo', nonDgIds, range.current);
+    var dg = pullDemoByIds_('DG demo', dgIds, range.current);
+    return {
+      selection: 'ALL',
       window: { start: range.start, end: range.end },
+      counts: {
+        brandCampaigns: nonDgIds.length, dgCampaigns: dgIds.length,
+        brandAgeRows: Object.keys(brand.age).length,
+        dgAgeRows: Object.keys(dg.age).length
+      },
       age: compareBands_(AGE_BANDS, brand.age, dg.age),
-      gender: compareBands_(GENDER_BANDS, brand.gender, dg.gender),
-      generated: Utilities.formatDate(new Date(),
-          CONFIG.TIME_ZONE || 'America/New_York', 'MMM d, yyyy')
+      gender: compareBands_(GENDER_BANDS, brand.gender, dg.gender)
     };
-    saveOverride('brandCampaigns::' + id, sel);
-    saveOverride('brandCompareData::' + id, JSON.stringify(result));
-    return { ok: true, data: result };
   } catch (e) {
-    return { ok: false, error: String(e.message || e).slice(0, 300) };
+    return null;
   }
-}
-
-/**
- * Return the saved brand comparison, or auto-build one (detect brand campaigns
- * by name, else fall back to the whole account). Client-callable; used to fill
- * the audience-validation slide without a manual pick.
- */
-function ensureBrandComparison(customerId) {
-  var existing = readBrandComparison_(customerId);
-  if (existing && ((existing.age || []).length || (existing.gender || []).length)) {
-    return { ok: true, data: existing, cached: true };
-  }
-  return buildBrandComparison(customerId, 'AUTO');
-}
-
-/** Manually-entered brand revenue by band (from GA4 / Shopify), or null. */
-function readBrandDemoManual_(customerId) {
-  var ov = readOverrides_();
-  var raw = ov['brandDemoManual::' + digits_(customerId)];
-  if (!raw) return null;
-  try { return JSON.parse(raw); } catch (e) { return null; }
-}
-
-/**
- * Save a manual brand demand curve (revenue by age/gender band) and rebuild the
- * comparison so the audience-validation slide fills even when Google Ads has no
- * demographics for the account. `dataJson` is { age:{band:rev}, gender:{...} }.
- * Client-callable.
- */
-function saveBrandDemographics(customerId, dataJson) {
-  try {
-    var id = ensureAccountContext_(customerId);
-    var data = typeof dataJson === 'string' ? JSON.parse(dataJson) : (dataJson || {});
-    var clean = { age: {}, gender: {} };
-    AGE_BANDS.forEach(function(b) {
-      var v = data.age && data.age[b];
-      if (v != null && v !== '' && !isNaN(Number(v))) clean.age[b] = Number(v);
-    });
-    GENDER_BANDS.forEach(function(b) {
-      var v = data.gender && data.gender[b];
-      if (v != null && v !== '' && !isNaN(Number(v))) clean.gender[b] = Number(v);
-    });
-    var any = Object.keys(clean.age).length || Object.keys(clean.gender).length;
-    if (any) saveOverride('brandDemoManual::' + id, JSON.stringify(clean));
-    else saveOverride('brandDemoManual::' + id, '');   // cleared
-    var sel = readBrandSelection_(id) || 'ALL';
-    return buildBrandComparison(customerId, sel);
-  } catch (e) {
-    return { ok: false, error: String(e.message || e).slice(0, 300) };
-  }
-}
-
-/** The saved comparison data for an account, parsed, or null. */
-function readBrandComparison_(customerId) {
-  var ov = readOverrides_();
-  var raw = ov['brandCompareData::' + digits_(customerId)];
-  if (!raw) return null;
-  try { return JSON.parse(raw); } catch (e) { return null; }
 }
 
 // ===========================================================================
@@ -6609,15 +6483,13 @@ function deckForAccount_(data) {
   });
 
   // --- audience validation (brand demographics vs Demand Gen) ---------------
-  // Only appears once the analyst has run the brand comparison in the dashboard,
-  // which stores the data per account. This is the rough version of slide 10;
-  // the branded rebuild gets the same figures through the deck prompt.
+  // Pulled with the account (all non Demand Gen revenue vs Demand Gen spend, by
+  // age). This is the rough version of slide 10; the branded rebuild gets the
+  // same figures through the deck prompt.
   section('Audience validation', false, function() {
-    var cmp = null;
-    try { cmp = readBrandComparison_(account.rawId); } catch (e) { cmp = null; }
+    var cmp = data.audienceValidation;
     if (!cmp || !(cmp.age || []).length) return;
-    var benchmark = cmp.selection === 'ALL'
-        ? 'whole account (all non Demand Gen)' : 'campaigns ' + cmp.selection;
+    var benchmark = 'whole account (all non Demand Gen)';
     var slide = tableSlide('audienceValidation',
       'Audience validation: brand revenue vs Demand Gen spend',
       ['Age', 'Brand revenue', 'Brand ROAS', 'DG spend', 'Index'],
@@ -6888,6 +6760,7 @@ function savePayload_(data) {
     settings: data.settings || null,
     adGroupSettings: data.adGroupSettings || [],
     landingPages: data.landingPages || [],
+    audienceValidation: data.audienceValidation || null,
     creativePacking: data.creativePacking || null,
     readout: data.readout || null,
     deckPrompt: buildDeckPrompt_(data),
