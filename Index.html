@@ -1170,7 +1170,7 @@ document.getElementById('deckBtn').onclick = function() {
         result.innerHTML = '<div class="deckerr">' +
             esc(error && error.message ? error.message : String(error)) + '</div>';
       })
-      .buildDeckForWeb();
+      .buildDeckForWeb(CURRENT_ACCOUNT);
 };
 
 function addShotFile(file) {

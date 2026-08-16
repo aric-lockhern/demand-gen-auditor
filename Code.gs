@@ -5033,10 +5033,10 @@ function deckProgress() {
 }
 
 /** Called from the dashboard button. Returns a link, not just a log line. */
-function buildDeckForWeb() {
+function buildDeckForWeb(accountId) {
   setProgress_(0, 1, 'Starting');
   try {
-    var urls = buildDeck();
+    var urls = buildDeck(accountId);
     // Complete at the running total, not 1 of 1, so the bar never jumps back.
     var state = deckProgress() || { total: 1 };
     setProgress_(state.total || 1, state.total || 1, 'Done');
@@ -5346,10 +5346,23 @@ function diagnoseBundle() {
   return text;
 }
 
-function buildDeck() {
+function buildDeck(onlyAccountId) {
   loadSettings_();
   var accounts = cachedAccounts_();
   if (!accounts.length) throw new Error('No cached data. Run refresh first.');
+
+  // The Sheet caches every account ever refreshed into it. When a specific
+  // account is requested (the one open in the dashboard), build ONLY that one,
+  // so the download never sweeps in decks from other clients. With no id (the
+  // editor/menu path) it still builds every cached account.
+  var want = onlyAccountId ? digits_(onlyAccountId) : '';
+  if (want) {
+    accounts = accounts.filter(function(a) { return digits_(a.id) === want; });
+    if (!accounts.length) {
+      throw new Error('No cached data for account ' + formatId_(want) +
+          '. Refresh it first.');
+    }
+  }
 
   var urls = [];
   accounts.forEach(function(account) {
