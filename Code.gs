@@ -1632,22 +1632,35 @@ function pullAdGroupSettings_() {
 
 function pullDemographics_(dateClause) {
   var out = [];
-  [['age_range_view', 'Age'], ['gender_view', 'Gender']].forEach(function(pair) {
-    var rows = gaql_(pair[1], pair[0],
-        ['campaign.name', 'ad_group_criterion.criterion_id']
-            .concat(CORE_METRICS),
-        [ALL_CONV_METRICS,
-         ['ad_group_criterion.age_range.type'],
-         ['ad_group_criterion.gender.type']],
-        DGEN + ' AND ' + dateClause);
+  // The channel-type filter works on the `campaign` resource but NOT on the
+  // demographic views, so scope the views by campaign.id instead: get the DG
+  // campaign ids first, then read age/gender for exactly those campaigns.
+  var idRows = gaql_('DG campaign ids (demo)', 'campaign', ['campaign.id'], [],
+      DGEN + ' AND ' + dateClause);
+  var ids = dedupe_(idRows.map(function(r) {
+    return String(get_(r, 'campaign.id')); }).filter(Boolean));
+  if (!ids.length) return out;
 
-    rows.forEach(function(r) {
-      var row = metricsOf_(r);
-      row.dimension = pair[1];
-      row.campaign = get_(r, 'campaign.name');
-      row.value = pretty_(get_(r, 'adGroupCriterion.ageRange.type') ||
-                          get_(r, 'adGroupCriterion.gender.type') || 'Unknown');
-      if (hasVolume_(row)) out.push(row);
+  var specs = [
+    ['age_range_view', 'Age', 'ad_group_criterion.age_range.type',
+     'adGroupCriterion.ageRange.type'],
+    ['gender_view', 'Gender', 'ad_group_criterion.gender.type',
+     'adGroupCriterion.gender.type']
+  ];
+  specs.forEach(function(spec) {
+    chunk_(ids, 200).forEach(function(batch) {
+      var rows = gaql_(spec[1], spec[0],
+          ['campaign.name', 'ad_group_criterion.criterion_id', spec[2]]
+              .concat(CORE_METRICS),
+          [ALL_CONV_METRICS],
+          'campaign.id IN (' + batch.join(', ') + ') AND ' + dateClause);
+      rows.forEach(function(r) {
+        var row = metricsOf_(r);
+        row.dimension = spec[1];
+        row.campaign = get_(r, 'campaign.name');
+        row.value = pretty_(get_(r, spec[3]) || 'Unknown');
+        if (hasVolume_(row)) out.push(row);
+      });
     });
   });
   return out;
