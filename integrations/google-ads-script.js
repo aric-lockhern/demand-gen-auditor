@@ -26,7 +26,8 @@
 var CONFIG = {
   EMAIL: 'aric@lockherndigital.com',   // where to send the ready-to-paste prompt
   DAYS: 90,                            // reporting window (whole days, ends yesterday)
-  TOP_ROWS: 15                         // longest table printed in the prompt
+  TOP_ROWS: 15,                        // longest table printed in the prompt
+  SAVE_THUMBNAILS: true                // download each video's thumbnail to Drive
 };
 
 var WARN = [];
@@ -101,7 +102,9 @@ function main() {
       var v = byVid[aid] || (byVid[aid] = {
         title: (r.asset.youtubeVideoAsset || {}).youtubeVideoTitle ||
                r.asset.name || ('Video ' + aid),
+        youtubeId: yt,
         url: yt ? 'https://www.youtube.com/watch?v=' + yt : '',
+        thumb: yt ? 'https://i.ytimg.com/vi/' + yt + '/hqdefault.jpg' : '',
         impr: 0, cost: 0, conv: 0, rev: 0, vtc: 0, wp25: 0, wp100: 0
       });
       var imp = num_(r.metrics.impressions);
@@ -117,6 +120,29 @@ function main() {
     v.p100 = v.impr ? v.wp100 / v.impr : 0;
     return v;
   }).sort(function(a, b) { return b.cost - a.cost; });
+
+  // Download each top video's thumbnail to a Drive folder so you can attach them
+  // to Claude and have them placed on the scorecard. Each is named to match the
+  // "thumbnail:" reference the prompt prints for that video (thumb-01.jpg …).
+  var thumbFolderUrl = '';
+  if (CONFIG.SAVE_THUMBNAILS) {
+    try {
+      var folder = DriveApp.createFolder(
+          'Lockhern DG thumbnails - ' + name + ' - ' + range.end);
+      videos.slice(0, CONFIG.TOP_ROWS).forEach(function(v, i) {
+        v.thumbFile = 'thumb-' + pad2_(i + 1) + '.jpg';
+        if (!v.thumb) return;
+        try {
+          var resp = UrlFetchApp.fetch(v.thumb, { muteHttpExceptions: true });
+          if (resp.getResponseCode() === 200) {
+            folder.createFile(resp.getBlob().setName(v.thumbFile));
+          }
+        } catch (e) { WARN.push('thumb ' + v.thumbFile + ': ' + e); }
+      });
+      thumbFolderUrl = folder.getUrl();
+      Logger.log('Thumbnails folder: ' + thumbFolderUrl);
+    } catch (e) { WARN.push('thumbnails: ' + e); }
+  }
 
   // ---- DG audiences ----
   var audiences = safeSearch_(
@@ -198,7 +224,7 @@ function main() {
     name: name, id: id, window: range, totals: totals, dgCamps: dgCamps,
     videos: videos, audiences: audiences, surfaces: surfaces,
     landingPages: landingPages, conversions: conversions,
-    ageCmp: ageCmp, genCmp: genCmp,
+    ageCmp: ageCmp, genCmp: genCmp, thumbFolderUrl: thumbFolderUrl,
     counts: { brand: nonDgIds.length, dg: dgIds.length }
   });
 
@@ -379,8 +405,17 @@ function buildPrompt_(d) {
       return '- ' + clip_(v.title, 50) + ' — spend ' + money_(v.cost) + ', impr ' +
         int_(v.impr) + ', 25%/100% ' + pct_(v.p25) + '/' + pct_(v.p100) +
         ', conv ' + dec_(v.conv) + ', VTC ' + dec_(v.vtc) +
-        (v.url ? ' (' + v.url + ')' : '');
+        (v.thumbFile ? '  thumbnail: ' + v.thumbFile : '') +
+        (v.thumb ? '  (' + v.thumb + ')' : '');
     });
+  if (d.thumbFolderUrl) {
+    p('');
+    p('Video thumbnails were downloaded to this Drive folder: ' + d.thumbFolderUrl);
+    p('They are named thumb-01.jpg, thumb-02.jpg, … in the order the videos are ' +
+      'listed above. Download them and attach them to this chat, then place each ' +
+      'video\'s thumbnail on its row of the Video performance scorecard. If they ' +
+      'are not attached, fetch each from its thumbnail URL above.');
+  }
   section_(p, 'Audiences in use', d.audiences.slice(0, N), function(a) {
     return '- ' + clip_(a.name, 46) + ' [' + a.type + '] — spend ' + money_(a.cost) +
       ', conv ' + dec_(a.conv) + ' @ ' + money_(safe_(a.cost, a.conv));
@@ -474,6 +509,7 @@ function pct_(v) { return (Math.round((v || 0) * 1000) / 10).toFixed(1) + '%'; }
 function dec_(v) { return (Math.round((v || 0) * 100) / 100).toFixed(2); }
 function int_(v) { return String(Math.round(v || 0)); }
 function clip_(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+function pad2_(n) { return n < 10 ? '0' + n : String(n); }
 function pretty_(v) {
   if (!v) return '';
   return String(v).toLowerCase().split('_').map(function(w) {
