@@ -85,41 +85,44 @@ function main() {
 
   var totals = rollup_(dgCamps);
 
-  // ---- DG videos (per creative, with watch depth) ----
+  // ---- DG videos (per creative). Watch depth is NOT selectable at the asset
+  //      level, so it stays a campaign/account-level figure (see Totals) and is
+  //      footnoted on the deck rather than shown per video. Try the youtube asset
+  //      type first, then field_type = VIDEO for coverage. ----
+  var vidRows = [];
+  ["asset.type = 'YOUTUBE_VIDEO'",
+   "ad_group_ad_asset_view.field_type = 'VIDEO'"].forEach(function(cond) {
+    if (vidRows.length) return;
+    vidRows = safeSearch_(
+      'SELECT campaign.name, asset.id, ' +
+      'asset.youtube_video_asset.youtube_video_id, ' +
+      'asset.youtube_video_asset.youtube_video_title, asset.name, ' +
+      'metrics.impressions, metrics.cost_micros, metrics.conversions, ' +
+      'metrics.conversions_value, metrics.view_through_conversions ' +
+      'FROM ad_group_ad_asset_view WHERE ' +
+      "campaign.advertising_channel_type = 'DEMAND_GEN' AND " + cond + ' AND ' +
+      range.clause);
+  });
   var byVid = {};
-  safeSearch_(
-    'SELECT campaign.name, asset.id, ' +
-    'asset.youtube_video_asset.youtube_video_id, ' +
-    'asset.youtube_video_asset.youtube_video_title, asset.name, ' +
-    'metrics.impressions, metrics.cost_micros, metrics.conversions, ' +
-    'metrics.conversions_value, metrics.view_through_conversions, ' +
-    'metrics.video_quartile_p25_rate, metrics.video_quartile_p100_rate ' +
-    'FROM ad_group_ad_asset_view WHERE ' +
-    "campaign.advertising_channel_type = 'DEMAND_GEN' AND " +
-    "asset.type = 'YOUTUBE_VIDEO' AND " + range.clause).forEach(function(r) {
-      var aid = String(r.asset.id);
-      var yt = (r.asset.youtubeVideoAsset || {}).youtubeVideoId || '';
-      var v = byVid[aid] || (byVid[aid] = {
-        title: (r.asset.youtubeVideoAsset || {}).youtubeVideoTitle ||
-               r.asset.name || ('Video ' + aid),
-        youtubeId: yt,
-        url: yt ? 'https://www.youtube.com/watch?v=' + yt : '',
-        thumb: yt ? 'https://i.ytimg.com/vi/' + yt + '/hqdefault.jpg' : '',
-        impr: 0, cost: 0, conv: 0, rev: 0, vtc: 0, wp25: 0, wp100: 0
-      });
-      var imp = num_(r.metrics.impressions);
-      v.impr += imp; v.cost += micros_(r.metrics.costMicros);
-      v.conv += num_(r.metrics.conversions); v.rev += num_(r.metrics.conversionsValue);
-      v.vtc += num_(r.metrics.viewThroughConversions);
-      v.wp25 += num_(r.metrics.videoQuartileP25Rate) * imp;
-      v.wp100 += num_(r.metrics.videoQuartileP100Rate) * imp;
+  vidRows.forEach(function(r) {
+    var aid = String(r.asset.id);
+    var yt = (r.asset.youtubeVideoAsset || {}).youtubeVideoId || '';
+    var v = byVid[aid] || (byVid[aid] = {
+      title: (r.asset.youtubeVideoAsset || {}).youtubeVideoTitle ||
+             r.asset.name || ('Video ' + aid),
+      youtubeId: yt,
+      url: yt ? 'https://www.youtube.com/watch?v=' + yt : '',
+      thumb: yt ? 'https://i.ytimg.com/vi/' + yt + '/hqdefault.jpg' : '',
+      impr: 0, cost: 0, conv: 0, rev: 0, vtc: 0
     });
-  var videos = Object.keys(byVid).map(function(k) {
-    var v = byVid[k];
-    v.p25 = v.impr ? v.wp25 / v.impr : 0;
-    v.p100 = v.impr ? v.wp100 / v.impr : 0;
-    return v;
-  }).sort(function(a, b) { return b.cost - a.cost; });
+    v.impr += num_(r.metrics.impressions);
+    v.cost += micros_(r.metrics.costMicros);
+    v.conv += num_(r.metrics.conversions);
+    v.rev += num_(r.metrics.conversionsValue);
+    v.vtc += num_(r.metrics.viewThroughConversions);
+  });
+  var videos = Object.keys(byVid).map(function(k) { return byVid[k]; })
+      .sort(function(a, b) { return b.cost - a.cost; });
 
   // Download each top video's thumbnail to a Drive folder so you can attach them
   // to Claude and have them placed on the scorecard. Each is named to match the
@@ -212,6 +215,21 @@ function main() {
       .filter(function(a) { return a.all > 0 || a.conv > 0; })
       .sort(function(a, b) { return b.all - a.all; });
 
+  // ---- DG device split ----
+  var devBy = {};
+  safeSearch_(
+    'SELECT segments.device, metrics.cost_micros, metrics.conversions FROM ' +
+    "campaign WHERE campaign.advertising_channel_type = 'DEMAND_GEN' AND " +
+    range.clause).forEach(function(r) {
+      var k = pretty_(r.segments.device) || 'Unknown';
+      var dv = devBy[k] || (devBy[k] = { device: k, cost: 0, conv: 0 });
+      dv.cost += micros_(r.metrics.costMicros);
+      dv.conv += num_(r.metrics.conversions);
+    });
+  var devices = Object.keys(devBy).map(function(k) { return devBy[k]; })
+      .filter(function(d) { return d.cost > 0; })
+      .sort(function(a, b) { return b.cost - a.cost; });
+
   // ---- AUDIENCE VALIDATION: brand (all non-DG) revenue by age/gender vs DG
   //      spend by age/gender. Split by campaign id (works on the demo views). --
   var brandDemo = pullDemoByIds_(nonDgIds, range.clause);
@@ -223,7 +241,7 @@ function main() {
   var md = buildPrompt_({
     name: name, id: id, window: range, totals: totals, dgCamps: dgCamps,
     videos: videos, audiences: audiences, surfaces: surfaces,
-    landingPages: landingPages, conversions: conversions,
+    landingPages: landingPages, conversions: conversions, devices: devices,
     ageCmp: ageCmp, genCmp: genCmp, thumbFolderUrl: thumbFolderUrl,
     counts: { brand: nonDgIds.length, dg: dgIds.length }
   });
@@ -348,9 +366,11 @@ function buildPrompt_(d) {
     'of-view slide, not three columns of text.');
   p('3. **Executive summary** — one line of setup (spend, conversions, CPA), then ' +
     'three findings as large stat callouts tagged FIX / READ IT RIGHT / WORTH A LOOK.');
-  p('4. **Video performance** — one-page scorecard, one row per video: impressions, ' +
-    'cost, 25/50/75/100 watch depth, conversions, view-through, CPA. Do NOT make one ' +
-    'slide per video.');
+  p('4. **Video performance** — one-page scorecard, one row per video (with its ' +
+    'thumbnail): impressions, cost, conversions, view-through, CPA. Watch depth is ' +
+    'only available blended at the account level (see Totals: Google does not report ' +
+    'it per video asset), so footnote it, do not fabricate a per-video figure. Do ' +
+    'NOT make one slide per video.');
   p('5. **Three moves** — split multi-video ads so each video is measurable; seed ' +
     'audiences from watching behaviour and best organic/paid-social creative; turn ' +
     'on and judge the AI-modified cuts.');
@@ -400,11 +420,11 @@ function buildPrompt_(d) {
       money_(c.cost) + ', conv ' + dec_(c.conv) + ' @ ' + money_(safe_(c.cost, c.conv)) +
       ', VTC ' + dec_(c.vtc);
   });
-  section_(p, 'Videos (per creative, with watch depth)', d.videos.slice(0, N),
+  section_(p, 'Videos (per creative)', d.videos.slice(0, N),
     function(v) {
       return '- ' + clip_(v.title, 50) + ' — spend ' + money_(v.cost) + ', impr ' +
-        int_(v.impr) + ', 25%/100% ' + pct_(v.p25) + '/' + pct_(v.p100) +
-        ', conv ' + dec_(v.conv) + ', VTC ' + dec_(v.vtc) +
+        int_(v.impr) + ', conv ' + dec_(v.conv) + ' @ ' + money_(safe_(v.cost, v.conv)) +
+        ', VTC ' + dec_(v.vtc) +
         (v.thumbFile ? '  thumbnail: ' + v.thumbFile : '') +
         (v.thumb ? '  (' + v.thumb + ')' : '');
     });
@@ -432,6 +452,9 @@ function buildPrompt_(d) {
   section_(p, 'Conversion actions', d.conversions.slice(0, N), function(a) {
     return '- ' + clip_(a.action, 44) + (a.category ? ' [' + a.category + ']' : '') +
       ' — all-conv ' + dec_(a.all) + ', bidding-conv ' + dec_(a.conv);
+  });
+  section_(p, 'Device split', (d.devices || []).slice(0, N), function(dv) {
+    return '- ' + dv.device + ' — spend ' + money_(dv.cost) + ', conv ' + dec_(dv.conv);
   });
 
   // Audience validation table (the comparison).
