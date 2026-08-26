@@ -274,6 +274,16 @@
     flex-wrap: wrap; }
   .cu-warn { font-size: 12.5px; color: var(--down); }
   .cu-note { font-size: 12px; color: var(--muted); }
+  .cu-window { display: inline-flex; align-items: center; gap: 8px;
+    font-size: 12.5px; color: var(--muted); }
+  .cu-window select {
+    padding: 7px 10px; border: 1px solid var(--rule); border-radius: 8px;
+    font-family: var(--sans); font-size: 13px; background: var(--card);
+    color: var(--ink);
+  }
+  .pb-btn.ghost { background: var(--card); color: var(--ink);
+    border-color: var(--rule); font-weight: 600; }
+  .pb-btn.ghost:hover { background: var(--wash); opacity: 1; }
   .cu-report {
     background: var(--card); border: 1px solid var(--rule); border-radius: 16px;
     box-shadow: var(--lift); padding: 30px 32px; max-width: 940px;
@@ -1856,10 +1866,18 @@ function cuAdRow(a, kind) {
     '</div></div>';
 }
 
+function windowDays(ac) {
+  if (!ac || !ac.start || !ac.end) return 0;
+  var s = new Date(ac.start + 'T00:00:00'), e = new Date(ac.end + 'T00:00:00');
+  var d = Math.round((e - s) / 86400000) + 1; // inclusive
+  return d > 0 ? d : 0;
+}
+
 function drawClientUpdate() {
   var ac = DATA.account || {};
   var ads = cuAds();
   var imp = accountImpact();
+  var days = windowDays(ac);
 
   var spend = imp.spend;
   var ordersTotal = imp.orders;         // incl. view-through
@@ -1952,7 +1970,8 @@ function drawClientUpdate() {
   var head = '<div class="cu-head">' +
     '<div><div class="cu-title">Demand Gen performance update</div>' +
       '<div class="cu-sub">' + esc(ac.name || '') +
-      (ac.start ? ' · ' + esc(ac.start) + ' – ' + esc(ac.end) : '') +
+      (ac.start ? ' · ' + esc(ac.start) + ' – ' + esc(ac.end) +
+        (days ? ' · ' + days + ' days' : '') : '') +
       '</div></div>' +
     '<div class="cu-by">Prepared by<br><b>Lockhern Digital</b></div>' +
   '</div>';
@@ -2063,10 +2082,22 @@ function drawClientUpdate() {
 
   var toolbar = '<div class="cu-actions">' +
     '<button class="pb-btn" id="cuPrint">🖨 Print / Save as PDF</button>' +
+    '<span class="cu-window">Window ' +
+      '<select id="cuDays">' +
+        [7, 14, 30, 60, 90, 180, 365].map(function(d) {
+          return '<option value="' + d + '"' + (d === days ? ' selected' : '') +
+            '>' + d + ' days</option>';
+        }).join('') +
+        (([7,14,30,60,90,180,365].indexOf(days) === -1 && days)
+          ? '<option value="' + days + '" selected>' + days + ' days</option>' : '') +
+      '</select>' +
+      '<button class="pb-btn ghost" id="cuRepull">Apply &amp; re-pull</button>' +
+      '<span id="cuRepullState" class="cu-note"></span>' +
+    '</span>' +
     (hasPurchase ? '' : '<span class="cu-warn">No purchase action set in ' +
       'Settings — purchase numbers will read 0 until you pick one.</span>') +
     (imp.fromAds ? '<span class="cu-note">Figures totalled from the ad ' +
-      'breakdown. Re-run Refresh to pull the account-level rollup.</span>' : '') +
+      'breakdown. Re-run the pull to get the account-level rollup.</span>' : '') +
   '</div>';
 
   return '<div class="scroll">' + toolbar +
@@ -2103,6 +2134,49 @@ function bindClientUpdate() {
     setTimeout(function() {
       document.body.classList.remove('printing-cu');
     }, 500);
+  };
+
+  var repull = document.getElementById('cuRepull');
+  if (repull) repull.onclick = function() {
+    var sel = document.getElementById('cuDays');
+    var state = document.getElementById('cuRepullState');
+    var days = Number(sel && sel.value) || 0;
+    if (!days) return;
+    if (!window.confirm('Re-pull ' + (DATA.account && DATA.account.name || 'this ' +
+        'account') + ' over the last ' + days + ' days? This runs the live ' +
+        'queries again and can take a minute.')) return;
+    repull.disabled = true;
+    repull.textContent = 'Pulling…';
+    if (state) { state.textContent = 'Running the ' + days + '-day pull…';
+      state.style.color = 'var(--muted)'; }
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (res && res.ok) {
+          if (state) { state.textContent = 'Done (' + res.start + ' – ' +
+            res.end + '). Reloading…'; state.style.color = 'var(--up)'; }
+          var base = (typeof BASE_URL !== 'undefined' && BASE_URL) ? BASE_URL : '';
+          var url = base
+            ? base + (base.indexOf('?') === -1 ? '?' : '&') + 'account=' +
+              encodeURIComponent(CURRENT_ACCOUNT)
+            : '';
+          setTimeout(function() {
+            if (url) { (window.top || window).location.href = url; }
+            else { location.reload(); }
+          }, 700);
+        } else {
+          repull.disabled = false;
+          repull.textContent = 'Apply & re-pull';
+          if (state) { state.textContent = (res && res.error) || 'Pull failed.';
+            state.style.color = 'var(--down)'; }
+        }
+      })
+      .withFailureHandler(function(e) {
+        repull.disabled = false;
+        repull.textContent = 'Apply & re-pull';
+        if (state) { state.textContent = 'Pull failed: ' + (e && e.message || e);
+          state.style.color = 'var(--down)'; }
+      })
+      .repullAccountDays(CURRENT_ACCOUNT, days);
   };
 }
 

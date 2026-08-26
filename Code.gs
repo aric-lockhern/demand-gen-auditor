@@ -4012,6 +4012,56 @@ function genderBand_(enumVal) {
 }
 
 /**
+ * Write one Settings-tab value (find the key row, else append). Used by the
+ * dashboard so a changed reporting window persists for future refreshes.
+ */
+function saveSetting_(key, value) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) return 'no-spreadsheet';
+  var sheet = ss.getSheetByName(SETTINGS_SHEET);
+  if (!sheet) return 'no-settings';
+  var last = sheet.getLastRow();
+  var want = String(key).trim().toLowerCase();
+  if (last > 1) {
+    var keys = sheet.getRange(2, 1, last - 1, 1).getValues();
+    for (var i = 0; i < keys.length; i++) {
+      if (String(keys[i][0]).trim().toLowerCase() === want) {
+        sheet.getRange(i + 2, 2).setValue(value);
+        return 'ok';
+      }
+    }
+  }
+  sheet.appendRow([key, value]);
+  return 'ok';
+}
+
+/**
+ * Set the reporting window and re-pull one account, live from the dashboard, so
+ * the window can be corrected without editing the Settings tab by hand. Persists
+ * "Days to report" so later full refreshes keep it, then re-audits just this
+ * account and caches the fresh payload.
+ *
+ * @return {Object} {ok, days, start, end, error}
+ */
+function repullAccountDays(accountId, days) {
+  try {
+    ensureAccountContext_(accountId);
+    var n = Math.round(Number(days) || 0);
+    if (!(n >= 1 && n <= 365)) {
+      return { ok: false, error: 'Enter a day count between 1 and 365.' };
+    }
+    CONFIG.LAST_N_DAYS = n;
+    saveSetting_('Days to report', n);
+    var data = auditAccount_(digits_(accountId));
+    savePayload_(data);
+    return { ok: true, days: n,
+             start: data.account.start, end: data.account.end };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e) };
+  }
+}
+
+/**
  * A lighter config load for web-callable helpers that target one account passed
  * from the dashboard. Unlike loadSettings_ it does not require the "Accounts to
  * report" list, and it sets CURRENT so apiSearch_/gaql_ hit the right account.
