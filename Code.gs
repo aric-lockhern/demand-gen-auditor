@@ -1064,7 +1064,7 @@ function pullAdGroups_(dateClause) {
 
 function pullAds_(dateClause) {
   var rows = gaql_('Ads', 'ad_group_ad',
-      ['campaign.name', 'ad_group.name', 'ad_group_ad.ad.id',
+      ['campaign.name', 'ad_group.id', 'ad_group.name', 'ad_group_ad.ad.id',
        'ad_group_ad.ad.type', 'ad_group_ad.status'].concat(CORE_METRICS),
       [ALL_CONV_METRICS, VIDEO_METRICS, QUARTILE_METRICS,
        ['ad_group_ad.ad.name', 'ad_group_ad.ad.final_urls'],
@@ -1074,6 +1074,7 @@ function pullAds_(dateClause) {
   var mapped = rows.map(function(r) {
     var out = metricsOf_(r);
     out.id = get_(r, 'adGroupAd.ad.id');
+    out.adGroupId = get_(r, 'adGroup.id');
     out.name = get_(r, 'adGroupAd.ad.name') || '';
     out.type = pretty_(get_(r, 'adGroupAd.ad.type'));
     out.status = get_(r, 'adGroupAd.status');
@@ -2214,6 +2215,195 @@ function realImpact_(totals, accountConvActions, sel) {
     roas: spend ? p.val / spend : 0,
     cpo: p.all ? spend / p.all : 0
   };
+}
+
+// ===========================================================================
+// PAUSE UNDERPERFORMERS  (live mutate + Google Ads Editor bulk sheet)
+// ===========================================================================
+
+/**
+ * POST a mutate to the Google Ads API, same auth path as apiSearch_. Kept
+ * separate so the read path stays untouched. `resourcePath` is the customer
+ * sub-path, e.g. 'adGroupAds:mutate'.
+ */
+function mutate_(resourcePath, body) {
+  if (!CURRENT || !CURRENT.id) throw new Error('No account selected.');
+  var url = 'https://googleads.googleapis.com/' + CONFIG.API_VERSION +
+      '/customers/' + digits_(CURRENT.id) + '/' + resourcePath;
+  var headers = {
+    Authorization: 'Bearer ' + ScriptApp.getOAuthToken(),
+    'developer-token': CONFIG.DEVELOPER_TOKEN
+  };
+  if (CONFIG.LOGIN_CUSTOMER_ID) {
+    headers['login-customer-id'] = digits_(CONFIG.LOGIN_CUSTOMER_ID);
+  }
+  var resp = UrlFetchApp.fetch(url, {
+    method: 'post', contentType: 'application/json', headers: headers,
+    payload: JSON.stringify(body), muteHttpExceptions: true
+  });
+  var code = resp.getResponseCode();
+  var text = resp.getContentText();
+  if (code !== 200) throw new Error(describeError_(code, text));
+  return JSON.parse(text);
+}
+
+/**
+ * Resolve a set of ad ids to their full ad_group_ad resource names (and current
+ * status), scoped to Demand Gen in the selected account. The resource name is
+ * customers/{cid}/adGroupAds/{adGroupId}~{adId}, so we need the ad group id,
+ * which we look up here rather than trusting a possibly-stale client payload.
+ */
+function resolveAdResources_(adIds) {
+  var want = {};
+  (adIds || []).forEach(function(id) { want[digits_(String(id))] = true; });
+  var ids = Object.keys(want);
+  if (!ids.length) return {};
+  var out = {};
+  // Chunk the IN() list so a big selection never blows the query length.
+  for (var i = 0; i < ids.length; i += 500) {
+    var slice = ids.slice(i, i + 500);
+    var rows = gaql_('Resolve ads to pause', 'ad_group_ad',
+        ['ad_group.id', 'ad_group_ad.ad.id', 'ad_group_ad.status',
+         'ad_group_ad.ad.name'],
+        [],
+        DGEN + ' AND ad_group_ad.ad.id IN (' + slice.join(',') + ')');
+    rows.forEach(function(r) {
+      var adId = digits_(String(get_(r, 'adGroupAd.ad.id')));
+      var agId = digits_(String(get_(r, 'adGroup.id')));
+      out[adId] = {
+        adId: adId, adGroupId: agId,
+        resourceName: 'customers/' + digits_(CURRENT.id) + '/adGroupAds/' +
+            agId + '~' + adId,
+        status: get_(r, 'adGroupAd.status'),
+        name: get_(r, 'adGroupAd.ad.name') || ''
+      };
+    });
+  }
+  return out;
+}
+
+/**
+ * Pause the given ads in the live account. Called from the dashboard after the
+ * user reviews and confirms the selection. Never enables or removes — status is
+ * only ever set to PAUSED — and partial failure is on, so one bad row does not
+ * stop the rest. Already-paused ads are skipped, not re-sent.
+ *
+ * @param {string} accountId  customer id to act on
+ * @param {Array}  adIds      ad ids to pause
+ * @return {Object} {ok, requested, paused[], skipped[], notFound[], error}
+ */
+function pauseAds(accountId, adIds) {
+  try {
+    ensureAccountContext_(accountId);
+    if (!adIds || !adIds.length) {
+      return { ok: false, error: 'No ads selected.' };
+    }
+    var resolved = resolveAdResources_(adIds);
+
+    var ops = [], toPause = [], skipped = [], notFound = [];
+    (adIds || []).forEach(function(raw) {
+      var id = digits_(String(raw));
+      var info = resolved[id];
+      if (!info) { notFound.push(id); return; }
+      if (info.status === 'PAUSED') { skipped.push(info); return; }
+      toPause.push(info);
+      ops.push({
+        updateMask: 'status',
+        update: { resourceName: info.resourceName, status: 'PAUSED' }
+      });
+    });
+
+    var paused = [];
+    if (ops.length) {
+      var res = mutate_('adGroupAds:mutate',
+          { operations: ops, partialFailure: true });
+      // Map results back; a partial-failure error leaves its slot without a
+      // resourceName, so anything that came back with one actually paused.
+      var results = (res && res.results) || [];
+      var pausedNames = {};
+      results.forEach(function(x) {
+        if (x && x.resourceName) pausedNames[x.resourceName] = true;
+      });
+      toPause.forEach(function(info) {
+        if (!ops.length || pausedNames[info.resourceName] ||
+            !res.partialFailureError) {
+          paused.push(info);
+        }
+      });
+      if (res && res.partialFailureError) {
+        return {
+          ok: true, requested: adIds.length,
+          paused: paused.map(pauseView_),
+          skipped: skipped.map(pauseView_),
+          notFound: notFound,
+          warning: 'Some rows were rejected by Google Ads: ' +
+              (res.partialFailureError.message || 'see account for detail.')
+        };
+      }
+    }
+    return {
+      ok: true, requested: adIds.length,
+      paused: paused.map(pauseView_),
+      skipped: skipped.map(pauseView_),
+      notFound: notFound
+    };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e) };
+  }
+}
+
+function pauseView_(info) {
+  return { adId: info.adId, name: info.name };
+}
+
+/**
+ * Build a Google Ads Editor bulk sheet (CSV) that pauses the given ads. Editor
+ * matches ads on Campaign + Ad group + Ad ID and reads the Status column, so
+ * this is import-ready: Account > Import > From file, review, then Post.
+ * Returned as base64 for the browser to download.
+ *
+ * @param {Array} ads  [{campaign, adGroup, id, name}]
+ * @return {Object} {ok, name, b64, count, error}
+ */
+function pauseBulkSheet(ads) {
+  try {
+    ads = ads || [];
+    if (!ads.length) return { ok: false, error: 'No ads selected.' };
+    var header = ['Campaign', 'Ad group', 'Ad ID', 'Ad name', 'Status'];
+    var lines = [header.map(csvCell_).join(',')];
+    ads.forEach(function(a) {
+      lines.push([
+        csvCell_(a.campaign || ''),
+        csvCell_(a.adGroup || ''),
+        csvCell_(String(a.id || '')),
+        csvCell_(a.name || ''),
+        csvCell_('Paused')
+      ].join(','));
+    });
+    var csv = lines.join('\r\n') + '\r\n';
+    return {
+      ok: true,
+      name: 'pause-underperformers-' + dateStamp_() + '.csv',
+      b64: Utilities.base64Encode(csv, Utilities.Charset.UTF_8),
+      count: ads.length
+    };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e) };
+  }
+}
+
+/** RFC-4180 CSV cell: quote when it contains comma, quote, or newline. */
+function csvCell_(v) {
+  v = String(v == null ? '' : v);
+  if (/[",\r\n]/.test(v)) return '"' + v.replace(/"/g, '""') + '"';
+  return v;
+}
+
+function dateStamp_() {
+  var tz = (SpreadsheetApp.getActiveSpreadsheet &&
+      SpreadsheetApp.getActiveSpreadsheet()) ?
+      SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone() : 'UTC';
+  return Utilities.formatDate(new Date(), tz || 'UTC', 'yyyy-MM-dd');
 }
 
 // ===========================================================================

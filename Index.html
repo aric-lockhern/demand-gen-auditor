@@ -227,6 +227,34 @@
   tbody tr.win:hover td { background: rgba(27,127,90,.13); }
   tbody tr.win td.name { box-shadow: inset 3px 0 0 var(--up); }
 
+  /* Pause workflow: checkbox column + action bar above the Ads table. */
+  th.pick, td.pick { width: 34px; text-align: center; padding-left: 4px; }
+  th.pick input, td.pick input { width: 15px; height: 15px; cursor: pointer; }
+  .pausebar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 12px; padding: 11px 14px;
+    background: var(--wash); border: 1px solid var(--rule); border-radius: 12px;
+  }
+  .pausebar .pb-left { font-size: 14px; color: var(--ink); }
+  .pausebar .pb-hint { color: var(--muted); font-size: 12.5px; }
+  .pausebar .pb-right {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .pb-floor { font-size: 12.5px; color: var(--muted); display: flex;
+    align-items: center; gap: 5px; }
+  .pb-floor input {
+    width: 72px; padding: 6px 8px; border: 1px solid var(--rule);
+    border-radius: 8px; font-family: var(--sans); font-size: 13px;
+  }
+  .pb-btn {
+    border: 1px solid var(--ink); background: var(--ink); color: #fff;
+    border-radius: 20px; padding: 7px 14px; font-size: 13.5px; font-weight: 600;
+    cursor: pointer; font-family: var(--sans);
+  }
+  .pb-btn:hover { opacity: .92; }
+  .pb-btn.danger { background: var(--down); border-color: var(--down); }
+  .pb-btn:disabled { opacity: .4; cursor: not-allowed; }
+
   .panel { display: none; }
   .panel.active { display: block; }
 
@@ -918,6 +946,11 @@ var VIDEO_SORT = 'cost';
 // Ads/Videos: when on, show only creatives that turned a real profit
 // (purchase revenue >= spend, i.e. purchase ROAS >= 1).
 var PROFIT_ONLY = false;
+// Ads pause workflow: ids checked for pausing, and the spend floor that
+// "Select underperformers" uses (only ads that have spent at least this much
+// AND returned less revenue than spend are auto-selected).
+var SELECTED = {};
+var PAUSE_MIN_SPEND = 50;
 
 function money(v) {
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: CUR,
@@ -3631,7 +3664,14 @@ function render() {
     return;
   }
 
-  var head = '<tr><th data-key="_first">' + view.first.label + '</th>' +
+  // The Ads table gets a leading checkbox column for the pause workflow.
+  var pickable = ACTIVE === 'ads';
+  var pickHead = pickable
+      ? '<th class="pick"><input type="checkbox" id="pickAll" ' +
+        'title="Select all shown"></th>' : '';
+
+  var head = '<tr>' + pickHead + '<th data-key="_first">' + view.first.label +
+      '</th>' +
       PERF.map(function(col) {
         var cls = col.key === SORT.key
             ? ' class="sorted' + (SORT.asc ? ' asc' : '') + '"' : '';
@@ -3642,8 +3682,12 @@ function render() {
     // Winner = the creative's purchase revenue beat its spend. Tint the row so
     // the profitable ones read at a glance without hunting the ROAS column.
     var win = ACTIVE === 'ads' && (Number(r.purchaseRoas) || 0) >= 1;
-    return '<tr' + (win ? ' class="win"' : '') + '><td class="name">' +
-        view.first.cell(r) + '</td>' +
+    var pick = pickable
+        ? '<td class="pick"><input type="checkbox" class="rowpick" data-id="' +
+          esc(String(r.id)) + '"' + (SELECTED[r.id] ? ' checked' : '') +
+          '></td>' : '';
+    return '<tr' + (win ? ' class="win"' : '') + '>' + pick +
+        '<td class="name">' + view.first.cell(r) + '</td>' +
         PERF.map(function(col) {
           var v = r[col.key];
           var blank = !v && (col.label === 'Per action' || col.label === 'ROAS' ||
@@ -3652,11 +3696,12 @@ function render() {
         }).join('') + '</tr>';
   }).join('');
 
-  panel.innerHTML = '<div class="scroll"><table><thead>' + head +
+  panel.innerHTML = (pickable ? pauseBarHtml(rows) : '') +
+      '<div class="scroll"><table><thead>' + head +
       '</thead><tbody>' + body + '</tbody></table></div>' +
       (ACTIVE === 'daily' ? sparkline() : '');
 
-  var headers = panel.querySelectorAll('th');
+  var headers = panel.querySelectorAll('th[data-key]');
   for (var i = 0; i < headers.length; i++) {
     headers[i].onclick = function() {
       var key = this.getAttribute('data-key');
@@ -3664,6 +3709,188 @@ function render() {
       render();
     };
   }
+
+  if (pickable) bindPause(rows);
+}
+
+// --- pause underperformers ------------------------------------------------
+function adKey(r) { return String(r.id); }
+
+function hasPurchaseAction() {
+  return !!(DATA.realImpact && DATA.realImpact.purchaseAction);
+}
+
+// An ad is an underperformer when it has spent past the floor and returned
+// less purchase revenue than it cost (purchase ROAS < 1) — the money-losers.
+// If the account has no purchase action wired up, ROAS is meaningless, so we
+// fall back to "spent this much and drove no tracked conversions at all".
+function isLoser(r) {
+  if ((Number(r.cost) || 0) < PAUSE_MIN_SPEND) return false;
+  if (hasPurchaseAction()) return (Number(r.purchaseRoas) || 0) < 1;
+  return !(Number(r.conversions) || 0);
+}
+
+function selectedCount() {
+  var n = 0; for (var k in SELECTED) if (SELECTED[k]) n++; return n;
+}
+
+function pauseBarHtml(rows) {
+  var losers = rows.filter(isLoser).length;
+  var n = selectedCount();
+  var rule = hasPurchaseAction()
+      ? 'spent ≥ ' + money(PAUSE_MIN_SPEND) + ', ROAS &lt; 1x'
+      : 'spent ≥ ' + money(PAUSE_MIN_SPEND) + ', no conversions (no purchase ' +
+        'action set)';
+  return '<div class="pausebar" id="pauseBar">' +
+    '<div class="pb-left">' +
+      '<strong id="pbCount">' + n + '</strong> selected to pause' +
+      '<span class="pb-hint"> · ' + losers + ' underperformer' +
+        (losers === 1 ? '' : 's') + ' shown (' + rule + ')</span>' +
+    '</div>' +
+    '<div class="pb-right">' +
+      '<label class="pb-floor">Min spend ' +
+        '<input type="number" id="pbFloor" value="' + PAUSE_MIN_SPEND +
+        '" min="0" step="10"></label>' +
+      '<button class="filter" id="pbSelect">Select underperformers</button>' +
+      '<button class="filter" id="pbClear">Clear</button>' +
+      '<button class="pb-btn" id="pbCsv"' + (n ? '' : ' disabled') +
+        '>⬇ Editor bulksheet</button>' +
+      '<button class="pb-btn danger" id="pbPause"' + (n ? '' : ' disabled') +
+        '>Pause ' + (n || '') + ' in Google Ads</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function refreshPauseBar() {
+  var n = selectedCount();
+  var c = document.getElementById('pbCount');
+  if (c) c.textContent = n;
+  var csv = document.getElementById('pbCsv');
+  var pause = document.getElementById('pbPause');
+  if (csv) csv.disabled = !n;
+  if (pause) {
+    pause.disabled = !n;
+    pause.textContent = 'Pause ' + (n || '') + ' in Google Ads';
+  }
+}
+
+function bindPause(rows) {
+  // Index every ad, not just the visible rows, so a selection made before a
+  // name/profit filter is still resolvable when the sheet or pause is fired.
+  var byId = {};
+  (DATA.ads || []).forEach(function(r) { byId[String(r.id)] = r; });
+
+  var all = document.getElementById('pickAll');
+  if (all) {
+    all.checked = rows.length > 0 && rows.every(function(r) {
+      return SELECTED[r.id];
+    });
+    all.onclick = function() {
+      var on = this.checked;
+      rows.forEach(function(r) { SELECTED[r.id] = on ? true : false; });
+      render();
+    };
+  }
+
+  var picks = document.querySelectorAll('.rowpick');
+  for (var i = 0; i < picks.length; i++) {
+    picks[i].onclick = function() {
+      SELECTED[this.getAttribute('data-id')] = this.checked;
+      refreshPauseBar();
+    };
+  }
+
+  var floor = document.getElementById('pbFloor');
+  if (floor) {
+    floor.onchange = function() {
+      PAUSE_MIN_SPEND = Math.max(0, Number(this.value) || 0);
+      render();
+    };
+  }
+
+  var sel = document.getElementById('pbSelect');
+  if (sel) sel.onclick = function() {
+    rows.forEach(function(r) { if (isLoser(r)) SELECTED[r.id] = true; });
+    render();
+  };
+
+  var clr = document.getElementById('pbClear');
+  if (clr) clr.onclick = function() { SELECTED = {}; render(); };
+
+  var csv = document.getElementById('pbCsv');
+  if (csv) csv.onclick = function() { downloadPauseSheet(byId); };
+
+  var pause = document.getElementById('pbPause');
+  if (pause) pause.onclick = function() { pauseSelected(byId); };
+}
+
+function selectedAds(byId) {
+  var out = [];
+  for (var id in SELECTED) {
+    if (SELECTED[id] && byId[id]) {
+      var r = byId[id];
+      out.push({ id: r.id, name: r.name, campaign: r.campaign,
+                 adGroup: r.adGroup });
+    }
+  }
+  return out;
+}
+
+function downloadPauseSheet(byId) {
+  var ads = selectedAds(byId);
+  if (!ads.length) { toast('Select at least one ad first.'); return; }
+  var btn = document.getElementById('pbCsv');
+  if (btn) { btn.disabled = true; btn.textContent = 'Building…'; }
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res && res.ok) {
+        triggerDownload(res.b64, res.name, 'text/csv');
+        toast(res.count + ' ad' + (res.count === 1 ? '' : 's') +
+            ' in the bulksheet — import it in Google Ads Editor.');
+      } else {
+        toast('Could not build the sheet: ' + ((res && res.error) || 'unknown'));
+      }
+      refreshPauseBar();
+    })
+    .withFailureHandler(function(e) {
+      toast('Could not build the sheet: ' + (e && e.message || e));
+      refreshPauseBar();
+    })
+    .pauseBulkSheet(ads);
+}
+
+function pauseSelected(byId) {
+  var ads = selectedAds(byId);
+  if (!ads.length) { toast('Select at least one ad first.'); return; }
+  var msg = 'Pause ' + ads.length + ' ad' + (ads.length === 1 ? '' : 's') +
+      ' in the live Google Ads account now?\n\nThis sets each to Paused ' +
+      'immediately. You can re-enable them in Google Ads or Editor. Nothing is ' +
+      'deleted.';
+  if (!window.confirm(msg)) return;
+  var btn = document.getElementById('pbPause');
+  if (btn) { btn.disabled = true; btn.textContent = 'Pausing…'; }
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res && res.ok) {
+        var p = (res.paused || []).length, s = (res.skipped || []).length,
+            nf = (res.notFound || []).length;
+        // Drop the paused ids from the selection; they're done.
+        (res.paused || []).forEach(function(x) { delete SELECTED[x.adId]; });
+        var note = p + ' paused';
+        if (s) note += ', ' + s + ' already paused';
+        if (nf) note += ', ' + nf + ' not found';
+        if (res.warning) note += ' — ' + res.warning;
+        toast(note + '. Re-run Refresh to see updated status.');
+      } else {
+        toast('Pause failed: ' + ((res && res.error) || 'unknown'));
+      }
+      render();
+    })
+    .withFailureHandler(function(e) {
+      toast('Pause failed: ' + (e && e.message || e));
+      render();
+    })
+    .pauseAds(CURRENT_ACCOUNT, ads.map(function(a) { return a.id; }));
 }
 
 function sparkline() {
