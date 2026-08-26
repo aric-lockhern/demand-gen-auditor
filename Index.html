@@ -1646,7 +1646,8 @@ function drawVideos(term) {
             '<div class="stat"><div class="k">CPO</div><div class="v">' +
             (v.orders ? money(v.cpo) : '—') + '</div></div>' +
             '<div class="stat"><div class="k">Purch. ROAS</div><div class="v">' +
-            (v.cost ? (Number(v.purchaseRoas) || 0).toFixed(2) + 'x' : '—') +
+            (v.orders ? roasCell(Number(v.purchaseRoas) || 0)
+                      : (v.cost ? '0.00x' : '—')) +
             '</div></div></div>'
           : '') +
         ((v.p25 || v.p100)
@@ -1760,6 +1761,15 @@ function persistLabels() {
 }
 
 // --- tables ---------------------------------------------------------------
+// Purchase ROAS cell: green and bold when net positive (>= 1, revenue beats
+// spend), red when it earned orders but stayed under 1, dash when no orders.
+function roasCell(v) {
+  if (!v) return '—';
+  var s = dec(v) + 'x';
+  if (v >= 1) return '<span style="color:var(--up);font-weight:700">' + s + '</span>';
+  return '<span style="color:var(--down)">' + s + '</span>';
+}
+
 function perfColumns(view) {
   var k = K();
   var cols = [
@@ -1787,8 +1797,7 @@ function perfColumns(view) {
       { key: 'orderValue', label: 'Revenue', fmt: money },
       { key: 'cpo', label: 'CPO',
         fmt: function(v) { return v ? money(v) : '—'; } },
-      { key: 'purchaseRoas', label: 'Purch. ROAS',
-        fmt: function(v) { return dec(v) + 'x'; } }
+      { key: 'purchaseRoas', label: 'Purch. ROAS', fmt: roasCell }
     ]);
   }
   return cols;

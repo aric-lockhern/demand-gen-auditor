@@ -528,14 +528,21 @@ function buildPrompt_(d) {
     'pipeline; Orders / Order value / CPO / ROAS are the real sales economics ' +
     '(CPO = spend / orders, ROAS = order value / spend).');
   d.videos.slice(0, N).forEach(function(v) {
+    var net = (v.orders && v.proas >= 1) ? '  [NET POSITIVE]' : '';
     p('- ' + clip_(v.title, 46) + ' — spend ' + money_(v.cost) + ', impr ' +
       int_(v.impr) + ', ATC ' + dec_(v.atc) + ', checkout ' + dec_(v.checkout) +
-      ', orders ' + dec_(v.orders) + ', order value ' + money_(v.orderVal) +
+      ', orders ' + dec_(v.orders) + ', revenue ' + money_(v.orderVal) +
       ', CPO ' + (v.orders ? money_(v.cpo) : 'no orders') +
-      ', ROAS ' + (v.cost ? dec_(v.proas) : '-') + ', VTC ' + dec_(v.vtc) +
+      ', ROAS ' + (v.cost ? dec_(v.proas) : '-') + net + ', VTC ' + dec_(v.vtc) +
       (v.thumbFile ? '  thumbnail: ' + v.thumbFile : '') +
       (v.thumb ? '  (' + v.thumb + ')' : ''));
   });
+  p('');
+  p('WINNERS: any creative marked [NET POSITIVE] earned more purchase revenue ' +
+    'than it spent (ROAS at or above 1.0). Lead the video slide with these as the ' +
+    'scale winners, name each with its ROAS, and mark the rest as the cut-or-fix ' +
+    'list. Use the isolated purchase revenue above, never the inflated ' +
+    'all-conversions value.');
   if (d.thumbFolderUrl) {
     p('');
     p('Video thumbnails were downloaded to this Drive folder: ' + d.thumbFolderUrl);
