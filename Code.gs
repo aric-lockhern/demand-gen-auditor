@@ -2283,73 +2283,81 @@ function resolveAdResources_(adIds) {
 }
 
 /**
- * Pause the given ads in the live account. Called from the dashboard after the
- * user reviews and confirms the selection. Never enables or removes — status is
- * only ever set to PAUSED — and partial failure is on, so one bad row does not
- * stop the rest. Already-paused ads are skipped, not re-sent.
+ * Set the status of the given ads in the live account. Shared by pauseAds and
+ * enableAds. Only ever sets ENABLED or PAUSED — never removes — partial failure
+ * is on so one bad row does not stop the rest, and ads already at the target
+ * status are skipped, not re-sent.
  *
- * @param {string} accountId  customer id to act on
- * @param {Array}  adIds      ad ids to pause
- * @return {Object} {ok, requested, paused[], skipped[], notFound[], error}
+ * @param {string} accountId     customer id to act on
+ * @param {Array}  adIds         ad ids to change
+ * @param {string} targetStatus  'PAUSED' or 'ENABLED'
+ * @return {Object} {ok, requested, changed[], skipped[], notFound[], warning}
  */
-function pauseAds(accountId, adIds) {
+function setAdsStatus_(accountId, adIds, targetStatus) {
   try {
+    if (targetStatus !== 'PAUSED' && targetStatus !== 'ENABLED') {
+      return { ok: false, error: 'Unsupported status.' };
+    }
     ensureAccountContext_(accountId);
     if (!adIds || !adIds.length) {
       return { ok: false, error: 'No ads selected.' };
     }
     var resolved = resolveAdResources_(adIds);
 
-    var ops = [], toPause = [], skipped = [], notFound = [];
+    var ops = [], toChange = [], skipped = [], notFound = [];
     (adIds || []).forEach(function(raw) {
       var id = digits_(String(raw));
       var info = resolved[id];
       if (!info) { notFound.push(id); return; }
-      if (info.status === 'PAUSED') { skipped.push(info); return; }
-      toPause.push(info);
+      if (info.status === targetStatus) { skipped.push(info); return; }
+      toChange.push(info);
       ops.push({
         updateMask: 'status',
-        update: { resourceName: info.resourceName, status: 'PAUSED' }
+        update: { resourceName: info.resourceName, status: targetStatus }
       });
     });
 
-    var paused = [];
+    var changed = [], warning = '';
     if (ops.length) {
       var res = mutate_('adGroupAds:mutate',
           { operations: ops, partialFailure: true });
       // Map results back; a partial-failure error leaves its slot without a
-      // resourceName, so anything that came back with one actually paused.
-      var results = (res && res.results) || [];
-      var pausedNames = {};
-      results.forEach(function(x) {
-        if (x && x.resourceName) pausedNames[x.resourceName] = true;
+      // resourceName, so anything that came back with one actually changed.
+      var okNames = {};
+      ((res && res.results) || []).forEach(function(x) {
+        if (x && x.resourceName) okNames[x.resourceName] = true;
       });
-      toPause.forEach(function(info) {
-        if (!ops.length || pausedNames[info.resourceName] ||
-            !res.partialFailureError) {
-          paused.push(info);
+      toChange.forEach(function(info) {
+        if (!res.partialFailureError || okNames[info.resourceName]) {
+          changed.push(info);
         }
       });
       if (res && res.partialFailureError) {
-        return {
-          ok: true, requested: adIds.length,
-          paused: paused.map(pauseView_),
-          skipped: skipped.map(pauseView_),
-          notFound: notFound,
-          warning: 'Some rows were rejected by Google Ads: ' +
-              (res.partialFailureError.message || 'see account for detail.')
-        };
+        warning = 'Some rows were rejected by Google Ads: ' +
+            (res.partialFailureError.message || 'see account for detail.');
       }
     }
-    return {
+    var out = {
       ok: true, requested: adIds.length,
-      paused: paused.map(pauseView_),
+      changed: changed.map(pauseView_),
       skipped: skipped.map(pauseView_),
       notFound: notFound
     };
+    if (warning) out.warning = warning;
+    return out;
   } catch (e) {
     return { ok: false, error: String(e && e.message || e) };
   }
+}
+
+/** Pause the given ads (money-losers). See setAdsStatus_. */
+function pauseAds(accountId, adIds) {
+  return setAdsStatus_(accountId, adIds, 'PAUSED');
+}
+
+/** Re-enable the given ads — the Undo for a pause. See setAdsStatus_. */
+function enableAds(accountId, adIds) {
+  return setAdsStatus_(accountId, adIds, 'ENABLED');
 }
 
 function pauseView_(info) {

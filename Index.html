@@ -253,6 +253,10 @@
   }
   .pb-btn:hover { opacity: .92; }
   .pb-btn.danger { background: var(--down); border-color: var(--down); }
+  .pb-btn.undo {
+    background: var(--card); color: var(--ink); border-color: var(--ink);
+  }
+  .pb-btn.undo:hover { background: var(--wash); opacity: 1; }
   .pb-btn:disabled { opacity: .4; cursor: not-allowed; }
 
   .panel { display: none; }
@@ -951,6 +955,9 @@ var PROFIT_ONLY = false;
 // AND returned less revenue than spend are auto-selected).
 var SELECTED = {};
 var PAUSE_MIN_SPEND = 50;
+// The last batch of ads paused live, so a one-click Undo can re-enable exactly
+// those. [{id, name}]
+var LAST_PAUSED = [];
 
 function money(v) {
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: CUR,
@@ -3757,6 +3764,10 @@ function pauseBarHtml(rows) {
         '>⬇ Editor bulksheet</button>' +
       '<button class="pb-btn danger" id="pbPause"' + (n ? '' : ' disabled') +
         '>Pause ' + (n || '') + ' in Google Ads</button>' +
+      (LAST_PAUSED.length
+        ? '<button class="pb-btn undo" id="pbUndo" title="Re-enable the ads you ' +
+          'just paused">↩ Undo pause (' + LAST_PAUSED.length + ')</button>'
+        : '') +
     '</div>' +
   '</div>';
 }
@@ -3822,6 +3833,9 @@ function bindPause(rows) {
 
   var pause = document.getElementById('pbPause');
   if (pause) pause.onclick = function() { pauseSelected(byId); };
+
+  var undo = document.getElementById('pbUndo');
+  if (undo) undo.onclick = function() { undoLastPause(); };
 }
 
 function selectedAds(byId) {
@@ -3872,15 +3886,19 @@ function pauseSelected(byId) {
   google.script.run
     .withSuccessHandler(function(res) {
       if (res && res.ok) {
-        var p = (res.paused || []).length, s = (res.skipped || []).length,
+        var changed = res.changed || [];
+        var p = changed.length, s = (res.skipped || []).length,
             nf = (res.notFound || []).length;
-        // Drop the paused ids from the selection; they're done.
-        (res.paused || []).forEach(function(x) { delete SELECTED[x.adId]; });
+        // Drop the paused ids from the selection; they're done. Remember them
+        // so Undo can re-enable exactly this batch.
+        changed.forEach(function(x) { delete SELECTED[x.adId]; });
+        if (p) LAST_PAUSED = changed.slice();
         var note = p + ' paused';
         if (s) note += ', ' + s + ' already paused';
         if (nf) note += ', ' + nf + ' not found';
         if (res.warning) note += ' — ' + res.warning;
-        toast(note + '. Re-run Refresh to see updated status.');
+        toast(note + (p ? '. Use Undo to re-enable, or Refresh to update.' :
+            '. Re-run Refresh to see updated status.'));
       } else {
         toast('Pause failed: ' + ((res && res.error) || 'unknown'));
       }
@@ -3891,6 +3909,32 @@ function pauseSelected(byId) {
       render();
     })
     .pauseAds(CURRENT_ACCOUNT, ads.map(function(a) { return a.id; }));
+}
+
+function undoLastPause() {
+  if (!LAST_PAUSED.length) return;
+  var ids = LAST_PAUSED.map(function(a) { return a.adId; });
+  var btn = document.getElementById('pbUndo');
+  if (btn) { btn.disabled = true; btn.textContent = 'Re-enabling…'; }
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res && res.ok) {
+        var e = (res.changed || []).length, s = (res.skipped || []).length;
+        var note = e + ' re-enabled';
+        if (s) note += ', ' + s + ' already enabled';
+        if (res.warning) note += ' — ' + res.warning;
+        LAST_PAUSED = [];
+        toast(note + '. Re-run Refresh to see updated status.');
+      } else {
+        toast('Undo failed: ' + ((res && res.error) || 'unknown'));
+      }
+      render();
+    })
+    .withFailureHandler(function(e) {
+      toast('Undo failed: ' + (e && e.message || e));
+      render();
+    })
+    .enableAds(CURRENT_ACCOUNT, ids);
 }
 
 function sparkline() {
