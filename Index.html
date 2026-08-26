@@ -259,6 +259,16 @@
   .pb-btn.undo:hover { background: var(--wash); opacity: 1; }
   .pb-btn:disabled { opacity: .4; cursor: not-allowed; }
 
+  /* Live serving-status pill in the Ads table. */
+  .pill {
+    display: inline-block; padding: 2px 9px; border-radius: 11px;
+    font-size: 11.5px; font-weight: 600; white-space: nowrap;
+  }
+  .pill.on { background: rgba(27,127,90,.14); color: var(--up); }
+  .pill.off { background: var(--wash); color: var(--muted);
+    border: 1px solid var(--rule); }
+  .pill.gone { background: rgba(194,75,60,.12); color: var(--down); }
+
   .panel { display: none; }
   .panel.active { display: block; }
 
@@ -1897,12 +1907,24 @@ function netCell(v) {
   return '<span style="color:var(--down)">' + s + '</span>';
 }
 
+// The ad's live serving status as a small pill: green Enabled, muted Paused,
+// red for anything removed.
+function statusCell(v) {
+  var s = String(v || '').toUpperCase();
+  var label = s === 'ENABLED' ? 'Enabled'
+      : s === 'PAUSED' ? 'Paused'
+      : s ? s.charAt(0) + s.slice(1).toLowerCase() : '—';
+  var cls = s === 'ENABLED' ? 'on' : s === 'PAUSED' ? 'off' : 'gone';
+  return '<span class="pill ' + cls + '">' + label + '</span>';
+}
+
 function perfColumns(view) {
   var k = K();
   // The Ads table is the profit ledger: real purchase economics first, no
   // horizontal scroll. Winners (revenue >= spend) sort and color to the top.
   if (view === 'ads') {
     return [
+      { key: 'status', label: 'Status', fmt: statusCell },
       { key: 'cost', label: 'Spend', fmt: money },
       { key: 'orders', label: 'Purch.', fmt: dec },
       { key: 'vtOrders', label: 'View-thru purch.', fmt: dec },
@@ -3890,8 +3912,12 @@ function pauseSelected(byId) {
         var p = changed.length, s = (res.skipped || []).length,
             nf = (res.notFound || []).length;
         // Drop the paused ids from the selection; they're done. Remember them
-        // so Undo can re-enable exactly this batch.
-        changed.forEach(function(x) { delete SELECTED[x.adId]; });
+        // so Undo can re-enable exactly this batch, and flip their status pill
+        // now so the table reflects reality without waiting for a Refresh.
+        changed.forEach(function(x) {
+          delete SELECTED[x.adId];
+          if (byId[x.adId]) byId[x.adId].status = 'PAUSED';
+        });
         if (p) LAST_PAUSED = changed.slice();
         var note = p + ' paused';
         if (s) note += ', ' + s + ' already paused';
@@ -3919,12 +3945,19 @@ function undoLastPause() {
   google.script.run
     .withSuccessHandler(function(res) {
       if (res && res.ok) {
-        var e = (res.changed || []).length, s = (res.skipped || []).length;
+        var changed = res.changed || [];
+        var e = changed.length, s = (res.skipped || []).length;
+        // Flip the pills back to Enabled immediately.
+        var idx = {};
+        (DATA.ads || []).forEach(function(r) { idx[String(r.id)] = r; });
+        changed.forEach(function(x) {
+          if (idx[x.adId]) idx[x.adId].status = 'ENABLED';
+        });
         var note = e + ' re-enabled';
         if (s) note += ', ' + s + ' already enabled';
         if (res.warning) note += ' — ' + res.warning;
         LAST_PAUSED = [];
-        toast(note + '. Re-run Refresh to see updated status.');
+        toast(note + '. Status updated below.');
       } else {
         toast('Undo failed: ' + ((res && res.error) || 'unknown'));
       }
