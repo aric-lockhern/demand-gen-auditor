@@ -93,7 +93,15 @@ var CONFIG = {
   ANTHROPIC_API_KEY: '',
   AI_MODEL: 'claude-opus-5',
   AI_API_VERSION: '2023-06-01',
-  AI_MAX_TOKENS: 20000
+  AI_MAX_TOKENS: 20000,
+
+  // Per-video down-funnel economics. Leave blank to auto-pick: the PURCHASE
+  // action fed to bidding (so ROAS matches the UI), and the highest-volume Add-
+  // to-Cart / Begin-checkout action. Paste an exact conversion action name to
+  // force a specific one.
+  PURCHASE_ACTION: '',
+  ATC_ACTION: '',
+  CHECKOUT_ACTION: ''
 };
 
 var CHANNELS = {
@@ -718,6 +726,7 @@ function auditAccount_(customerId) {
   data.audienceValidation = buildDemoComparison_(range);
   backfillVideoQuartiles_(data.videos, data.ads);
   attachVideoConversions_(data.videos, data.ads, range.current);
+  data.funnelActions = attachVideoFunnel_(data.videos, data.conversionActions);
   data.totals = rollup_(data.campaigns);
   data.prior = range.prior ? rollup_(pullCampaigns_(range.prior)) : null;
   data.channelMix = rollupBy_(data.channels, 'channel');
@@ -2034,6 +2043,68 @@ function attachVideoConversions_(videos, ads, dateClause) {
   }
 }
 
+/**
+ * Choose which conversion actions count as an ORDER, an Add-to-Cart and a Begin-
+ * checkout, from the account's conversion-action list. Orders default to the
+ * purchase action fed to bidding (conversions > 0) so ROAS matches the UI, then
+ * highest value; ATC / checkout default to the highest-volume action in their
+ * category. CONFIG overrides win. Returns { purchase, atc, checkout } names.
+ */
+function pickFunnelActions_(actions) {
+  var agg = {};
+  (actions || []).forEach(function(a) {
+    var key = a.action || a.name;
+    if (!key) return;
+    var g = agg[key] || (agg[key] = { name: key,
+      cat: String(a.category || '').toLowerCase(), all: 0, val: 0, conv: 0 });
+    g.all += a.allConversions || 0;
+    g.val += a.allConvValue || 0;
+    g.conv += a.conversions || 0;
+  });
+  var list = Object.keys(agg).map(function(k) { return agg[k]; });
+  function pick(re, byValue) {
+    var pool = list.filter(function(g) { return re.test(g.cat); });
+    if (byValue) {
+      var bid = pool.filter(function(g) { return g.conv > 0; });
+      if (bid.length) pool = bid;
+      pool.sort(function(a, b) { return b.val - a.val; });
+    } else {
+      pool.sort(function(a, b) { return b.all - a.all; });
+    }
+    return pool.length ? pool[0].name : '';
+  }
+  return {
+    purchase: CONFIG.PURCHASE_ACTION || pick(/purchase/, true),
+    atc: CONFIG.ATC_ACTION || pick(/cart/, false),
+    checkout: CONFIG.CHECKOUT_ACTION || pick(/checkout/, false)
+  };
+}
+
+/**
+ * Per-video down-funnel economics from the conversion-action breakdown already
+ * on each video: Add-to-Cart, Begin-checkout, real Orders, order value, CPO
+ * (cost / orders) and purchase ROAS (order value / cost).
+ */
+function attachVideoFunnel_(videos, accountConvActions) {
+  var sel = pickFunnelActions_(accountConvActions);
+  (videos || []).forEach(function(v) {
+    var orders = 0, orderValue = 0, atc = 0, checkout = 0;
+    (v.conversionActions || []).forEach(function(a) {
+      if (sel.purchase && a.action === sel.purchase) {
+        orders += a.allConversions || 0; orderValue += a.allConvValue || 0;
+      } else if (sel.atc && a.action === sel.atc) {
+        atc += a.allConversions || 0;
+      } else if (sel.checkout && a.action === sel.checkout) {
+        checkout += a.allConversions || 0;
+      }
+    });
+    v.orders = orders; v.orderValue = orderValue; v.atc = atc; v.checkout = checkout;
+    v.cpo = orders ? v.cost / orders : 0;
+    v.purchaseRoas = v.cost ? orderValue / v.cost : 0;
+  });
+  return sel;
+}
+
 // ===========================================================================
 // VIEWER LABELS
 // ===========================================================================
@@ -2853,7 +2924,7 @@ function buildDeckPrompt_(data) {
   push("3. EXECUTIVE SUMMARY. Assertion title plus a one-line setup that states spend, conversions, cost per action and its change vs prior. Then THREE findings as large stat callouts, each under a small tag: FIX, READ IT RIGHT, WORTH A LOOK (match the reference). Choose the three from the findings list below. Do NOT lead with the percent of conversions outside the bidding column, and do NOT use the percent of ads that got an impression: most campaigns were intentionally paused, so that number is meaningless. The real headlines are that creative is unmeasurable because one ad carries every video, that view-through carries most of the attributed action, and the single settings point that matters most. Add a short \"what we are NOT calling a problem\" line (the intentionally paused seasonal campaigns), and the footnote that view-through sits outside cost per action and ROAS.");
   push("4. BUCKET ONE, SETTINGS. Assertion title (for example: two settings are right, three are starving the algorithm). A three-column status table: SETTING, VERIFIED VALUE, WHAT IT MEANS THROUGH OUR LENS, each row tagged ALIGNED, FIX, or WORTH A LOOK. Show only settings you can confirm. Prioritise: conversion goals (Add to Cart, Purchase, and whether Begin Checkout reaches bidding), view-through conversion optimisation, new versus existing customer bidding and the purchaser exclusion, the AI asset enhancements, and delivery controls. End with a source line: read from the campaign and ad-group screens on the screenshot date, interface beats API on conflict. If the analyst attached settings screenshots, they are the truth here.");
   push("5. BUCKET TWO, STRUCTURE. Assertion title about creative packing: one ad carries several videos, so Google reports a single blended watch rate and no individual video can be measured. Show the one live ad with its five (or N) video thumbnails, and the single blended watch-depth chart (share of impressions reaching 25 / 50 / 75 / 100, this window vs prior). Show live versus paused as small counts (campaigns, ad groups, ads, audiences), framed as intentional seasonal pushes, not failure. State plainly what splitting the ad recovers.");
-  push("6. BUCKET THREE, VIDEO PERFORMANCE. The one-page creative scorecard, a thumbnail per creative, all on one slide. Columns like the reference: CREATIVE, IMPR., COST, VIEW RATE, 25/50/75/100, CONV., VIEW-THRU, CPA, CPA INC. VT, and the source (advertiser upload vs Enhanced by Google AI). Watch depth reads \"blended\" per row where the videos share one ad. One takeaway line: the cheapest action and the strongest attention are usually different videos. Footnote the blended watch depth and that view-through sits outside CPA and ROAS.");
+  push("6. BUCKET THREE, VIDEO PERFORMANCE. The one-page creative scorecard, a thumbnail per creative, all on one slide. Columns like the reference: CREATIVE, IMPR., COST, VIEW RATE, then the down-funnel and sales economics: ATC, ORDERS, CPO (cost per order), ROAS (order value over cost), plus VIEW-THRU. Use the atc / checkout / orders / order_value / cpo / roas columns in the creative appendix below (they isolate the real purchase conversion, not blended all-conversions). Make the story explicit: rank or highlight (a) the creatives driving the most DOWN-FUNNEL PIPELINE (ATC and begin checkout) and (b) the creatives driving the most ORDERS and the most efficient CPO and ROAS. These are usually different videos, and that contrast is the point of the slide. Watch depth reads \"blended\" where the videos share one ad; footnote it, and footnote that view-through sits outside CPA and ROAS.");
   push("7. BUCKET FOUR, VIDEO AND CONTENT. Assertion \"Three creative moves, in this order.\" Three numbered moves (01, 02, 03), each tagged OBSERVED (data proves it) or TEST (it does not), each with a \"how we know it worked\" line: split the ad to one video each; seed audiences from watching and top organic TikTok and Meta cuts, not intent lists; turn on the AI Shorter and Resized cuts then judge them against the originals. Close with the concrete creative brief that follows.");
   push("8. BUCKET FOUR, THE DESTINATION. Assertion about where all the spend lands (one page, one ad). Stat strip: spend, conversions, cost per action, ads pointing there, and the destination URL. Two columns: WHAT THE PAGE ALREADY DOES WELL vs WHAT IT ASKS A COLD VIEWER TO DO. Read the destination pages and the account name to understand what they sell. Then THE RECOMMENDATION: Demand Gen buys cold attention, so a standard product page is usually the wrong destination. Recommend a purpose-built page and name the primary KPI to test for this audience (a quiz, an email or SMS capture, or a direct order), and make it countable with new conversion actions. Footnote the device split if known.");
   push("9. BUCKET ONE, AUDIENCE. Assertion crediting (or flagging) the purchaser exclusion. Three columns: WHO THE SIGNAL TARGETS (the audience lists), WHO IT KEEPS OUT (past purchasers, credited when excluded), AND WHO IT REACHES (gender split with spend share and cost per action). Include a \"spend by age range\" bar chart. Call out whether existing customers are excluded from prospecting: excluding them is correct and worth crediting. Use the ad-group audience data below and any audience screenshot as truth, since the API cannot read the exclusion inside a Demand Gen signal. Source line: ad-group audience screen, inferred demographics, undetermined share noted.");
@@ -2939,10 +3010,18 @@ function buildDeckPrompt_(data) {
   }
   var vids = (data.videos || []).slice(0, DECK.CREATIVE_ROWS_PER_PAGE * 3);
   if (vids.length) {
-    push('Creative appendix, highest spend first. thumb is the poster to embed. src is advertiser or Enhanced by Google AI. q25..q100 are completion shares. cpa_all includes view-through.');
+    var fa = data.funnelActions || {};
+    push('Creative appendix, highest spend first. thumb is the poster to embed. ' +
+      'src is advertiser or Enhanced by Google AI. q25..q100 are completion ' +
+      'shares. cpa_all includes view-through. The down-funnel columns show the ' +
+      'real purchase economics per video: atc and checkout are the down-funnel ' +
+      'pipeline; orders / order_value / cpo (cost per order) / roas (order value ' +
+      'over cost) are the sales economics. Order = "' + (fa.purchase || 'n/a') +
+      '", Add-to-Cart = "' + (fa.atc || 'n/a') + '", Begin-checkout = "' +
+      (fa.checkout || 'n/a') + '".');
     push('');
-    push('| Creative | src | thumb | impr | cost | view_rate | q25 | q50 | q75 | q100 | conv | view_thru | cpa | cpa_all |');
-    push('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
+    push('| Creative | src | thumb | impr | cost | view_rate | q25 | q50 | q75 | q100 | conv | view_thru | cpa | cpa_all | atc | checkout | orders | order_value | cpo | roas |');
+    push('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
     vids.forEach(function(v) {
       function q(x) { return (v.p25 || v.p50 || v.p75 || v.p100) ? ((Number(v[x]) || 0) * 100).toFixed(0) + '%' : '-'; }
       var tc = (Number(v.conversions) || 0) + (Number(v.viewThrough) || 0);
@@ -2957,7 +3036,13 @@ function buildDeckPrompt_(data) {
         (Number(v.conversions) || 0).toFixed(1),
         Math.round(v.viewThrough || 0),
         v.conversions ? (Number(v.cost) / v.conversions).toFixed(0) : '-',
-        tc ? (Number(v.cost) / tc).toFixed(0) : '-'
+        tc ? (Number(v.cost) / tc).toFixed(0) : '-',
+        (Number(v.atc) || 0).toFixed(1),
+        (Number(v.checkout) || 0).toFixed(1),
+        (Number(v.orders) || 0).toFixed(1),
+        (Number(v.orderValue) || 0).toFixed(0),
+        v.orders ? (Number(v.cost) / v.orders).toFixed(0) : '-',
+        v.cost ? (Number(v.orderValue) / v.cost).toFixed(2) : '-'
       ].join(' | ') + ' |');
     });
     push('');
@@ -6746,6 +6831,7 @@ function savePayload_(data) {
       v.source = videoSource_(v.title);
       return v;
     }),
+    funnelActions: data.funnelActions || null,
     conversionActions: data.conversionActions || [],
     surfaceMix: data.surfaceMix || [],
     deviceMix: data.deviceMix || [],

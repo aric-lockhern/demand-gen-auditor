@@ -1592,6 +1592,16 @@ function drawVideos(term) {
           '<div class="stat"><div class="k">View rate</div><div class="v">' +
             pct0(v.viewRate) + '</div></div>' +
         '</div>' +
+        ((v.orders || v.atc || v.checkout)
+          ? '<div class="stats"><div class="stat"><div class="k">Orders</div>' +
+            '<div class="v">' + dec(v.orders || 0) + '</div></div>' +
+            '<div class="stat"><div class="k">CPO</div><div class="v">' +
+            (v.orders ? money(v.cpo) : '—') + '</div></div>' +
+            '<div class="stat"><div class="k">Purch. ROAS</div><div class="v">' +
+            (v.cost ? (Number(v.purchaseRoas) || 0).toFixed(2) : '—') + '</div></div>' +
+            '<div class="stat"><div class="k">Add to cart</div><div class="v">' +
+            dec(v.atc || 0) + '</div></div></div>'
+          : '') +
         ((v.p25 || v.p100)
           ? '<div class="funnel"><div class="head"><span>How far people watch' +
             (v.quartileSource === 'ad' ? ' <em>(from its ad)</em>' : '') +
