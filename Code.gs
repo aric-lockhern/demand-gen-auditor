@@ -1994,18 +1994,20 @@ function attachVideoConversions_(videos, ads, dateClause) {
       found = {
         action: action,
         category: pretty_(get_(row, 'segments.conversionActionCategory')) || '',
-        allConversions: 0, allConvValue: 0, conversions: 0
+        allConversions: 0, allConvValue: 0, conversions: 0, viewThrough: 0
       };
       video.conversionActions.push(found);
     }
     found.allConversions += num_(get_(row, 'metrics.allConversions')) * weight;
     found.allConvValue += num_(get_(row, 'metrics.allConversionsValue')) * weight;
     found.conversions += num_(get_(row, 'metrics.conversions')) * weight;
+    found.viewThrough += num_(get_(row, 'metrics.viewThroughConversions')) * weight;
   }
 
   var assetRows = gaql_('Video conversion actions', 'ad_group_ad_asset_view',
       ['asset.id', 'segments.conversion_action_name', 'metrics.all_conversions'],
       [['metrics.all_conversions_value'], ['metrics.conversions'],
+       ['metrics.view_through_conversions'],
        ['segments.conversion_action_category']],
       DGEN + " AND asset.type = 'YOUTUBE_VIDEO' AND " + dateClause);
 
@@ -2028,6 +2030,7 @@ function attachVideoConversions_(videos, ads, dateClause) {
         ['ad_group_ad.ad.id', 'segments.conversion_action_name',
          'metrics.all_conversions'],
         [['metrics.all_conversions_value'], ['metrics.conversions'],
+         ['metrics.view_through_conversions'],
          ['segments.conversion_action_category']],
         DGEN + ' AND ' + dateClause);
 
@@ -2093,10 +2096,11 @@ function pickFunnelActions_(actions) {
 
 /** Sum a row's conversion-action breakdown into orders/value/atc/checkout. */
 function funnelOf_(convActions, sel) {
-  var out = { orders: 0, orderValue: 0, atc: 0, checkout: 0 };
+  var out = { orders: 0, orderValue: 0, atc: 0, checkout: 0, vtOrders: 0 };
   (convActions || []).forEach(function(a) {
     if (sel.purchase && a.action === sel.purchase) {
       out.orders += a.allConversions || 0; out.orderValue += a.allConvValue || 0;
+      out.vtOrders += a.viewThrough || 0;
     } else if (sel.atc && a.action === sel.atc) {
       out.atc += a.allConversions || 0;
     } else if (sel.checkout && a.action === sel.checkout) {
@@ -2115,7 +2119,8 @@ function attachVideoFunnel_(videos, sel) {
   (videos || []).forEach(function(v) {
     var f = funnelOf_(v.conversionActions, sel);
     v.orders = f.orders; v.orderValue = f.orderValue; v.atc = f.atc;
-    v.checkout = f.checkout;
+    v.checkout = f.checkout; v.vtOrders = f.vtOrders;
+    v.netProfit = f.orderValue - (v.cost || 0);
     v.cpo = f.orders ? v.cost / f.orders : 0;
     v.purchaseRoas = v.cost ? f.orderValue / v.cost : 0;
   });
@@ -2131,13 +2136,14 @@ function attachAdFunnel_(ads, dateClause, sel) {
   var byAd = {};
   ads.forEach(function(a) {
     a.orders = 0; a.orderValue = 0; a.atc = 0; a.checkout = 0;
-    a.cpo = 0; a.purchaseRoas = 0;
+    a.vtOrders = 0; a.cpo = 0; a.purchaseRoas = 0; a.netProfit = 0;
     byAd[a.id] = a;
   });
   var rows = gaql_('Ad down-funnel', 'ad_group_ad',
       ['ad_group_ad.ad.id', 'segments.conversion_action_name',
        'metrics.all_conversions'],
-      [['metrics.all_conversions_value']],
+      [['metrics.all_conversions_value'],
+       ['metrics.view_through_conversions']],
       DGEN + ' AND ' + dateClause);
   rows.forEach(function(r) {
     var ad = byAd[get_(r, 'adGroupAd.ad.id')];
@@ -2145,13 +2151,16 @@ function attachAdFunnel_(ads, dateClause, sel) {
     var nm = get_(r, 'segments.conversionActionName') || '';
     var all = num_(get_(r, 'metrics.allConversions'));
     var val = num_(get_(r, 'metrics.allConversionsValue'));
-    if (sel.purchase && nm === sel.purchase) { ad.orders += all; ad.orderValue += val; }
-    else if (sel.atc && nm === sel.atc) { ad.atc += all; }
+    var vt = num_(get_(r, 'metrics.viewThroughConversions'));
+    if (sel.purchase && nm === sel.purchase) {
+      ad.orders += all; ad.orderValue += val; ad.vtOrders += vt;
+    } else if (sel.atc && nm === sel.atc) { ad.atc += all; }
     else if (sel.checkout && nm === sel.checkout) { ad.checkout += all; }
   });
   ads.forEach(function(a) {
     a.cpo = a.orders ? a.cost / a.orders : 0;
     a.purchaseRoas = a.cost ? a.orderValue / a.cost : 0;
+    a.netProfit = (a.orderValue || 0) - (a.cost || 0);
   });
 }
 

@@ -217,6 +217,15 @@
   .filter[aria-pressed="true"] {
     background: var(--ink); color: #fff; border-color: var(--ink);
   }
+  /* The profit toggle reads as money: green when engaged. */
+  .profit-toggle[aria-pressed="true"] {
+    background: var(--up); color: #fff; border-color: var(--up);
+  }
+
+  /* Winner rows: the creatives whose purchase revenue beat their spend. */
+  tbody tr.win td { background: rgba(27,127,90,.07); }
+  tbody tr.win:hover td { background: rgba(27,127,90,.13); }
+  tbody tr.win td.name { box-shadow: inset 3px 0 0 var(--up); }
 
   .panel { display: none; }
   .panel.active { display: block; }
@@ -230,6 +239,8 @@
     overflow: hidden; box-shadow: var(--lift); display: flex;
     flex-direction: column;
   }
+  /* Profitable creative: green frame so winners jump out of the grid. */
+  .video.win { border-color: var(--up); box-shadow: 0 0 0 1px var(--up), var(--lift); }
   .video .shot { position: relative; aspect-ratio: 16/9; background: var(--wash); }
   .video .shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .video .shot .none {
@@ -263,6 +274,8 @@
     padding: 12px 0; border-top: 1px solid var(--rule);
     border-bottom: 1px solid var(--rule);
   }
+  /* The down-funnel tile row carries six purchase metrics: two rows of three. */
+  .stats.down { grid-template-columns: repeat(3, 1fr); border-top: none; }
   .stat .k { font-size: 11.5px; color: var(--muted); }
   .stat .v { font-size: 15.5px; font-weight: 600; margin-top: 2px; }
   .funnel { margin-top: 12px; }
@@ -902,6 +915,9 @@ var CHANNEL_FILTER = null;
 var MODE = 'conversions';
 var VIDEO_FILTER = 'all';
 var VIDEO_SORT = 'cost';
+// Ads/Videos: when on, show only creatives that turned a real profit
+// (purchase revenue >= spend, i.e. purchase ROAS >= 1).
+var PROFIT_ONLY = false;
 
 function money(v) {
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: CUR,
@@ -1619,6 +1635,7 @@ function drawVideos(term) {
   var all = DATA.videos || [];
   var rows = all.filter(function(v) {
     return videoPasses(v) &&
+        (!PROFIT_ONLY || (Number(v.purchaseRoas) || 0) >= 1) &&
         (!term || String(v.title).toLowerCase().indexOf(term) !== -1);
   });
 
@@ -1641,8 +1658,11 @@ function drawVideos(term) {
         'check the Assets tab instead.</div></div>';
   }
   if (!rows.length) {
-    return '<div class="scroll"><div class="empty">No videos match this ' +
-        'filter.</div></div>';
+    var vwhy = (PROFIT_ONLY
+        ? 'No video turned a real profit in this window. Turn off "Profitable ' +
+          'only" to see every creative.'
+        : 'No videos match this filter.');
+    return '<div class="scroll"><div class="empty">' + vwhy + '</div></div>';
   }
 
   return '<div class="videos">' + rows.map(function(v) {
@@ -1674,7 +1694,8 @@ function drawVideos(term) {
           '<span class="pctv">' + pct0(v[q]) + '</span></div>';
     }).join('');
 
-    return '<div class="video">' +
+    var vwin = (Number(v.purchaseRoas) || 0) >= 1;
+    return '<div class="video' + (vwin ? ' win' : '') + '">' +
       '<div class="shot">' + shot + starBtn + rating + '</div>' +
       '<div class="body">' +
         '<h3>' + esc(v.title) + '</h3>' +
@@ -1691,11 +1712,15 @@ function drawVideos(term) {
           '<div class="stat"><div class="k">View rate</div><div class="v">' +
             pct0(v.viewRate) + '</div></div>' +
         '</div>' +
-        ((v.orders || v.orderValue || v.atc || v.checkout)
-          ? '<div class="stats"><div class="stat"><div class="k">Orders</div>' +
+        ((v.orders || v.orderValue || v.atc || v.checkout || v.vtOrders)
+          ? '<div class="stats down"><div class="stat"><div class="k">Purchases</div>' +
             '<div class="v">' + dec(v.orders || 0) + '</div></div>' +
+            '<div class="stat"><div class="k">View-thru purch.</div><div class="v">' +
+            dec(v.vtOrders || 0) + '</div></div>' +
             '<div class="stat"><div class="k">Revenue</div><div class="v">' +
             money(v.orderValue || 0) + '</div></div>' +
+            '<div class="stat"><div class="k">Net profit</div><div class="v">' +
+            netCell((v.orderValue || 0) - (v.cost || 0)) + '</div></div>' +
             '<div class="stat"><div class="k">CPO</div><div class="v">' +
             (v.orders ? money(v.cpo) : '—') + '</div></div>' +
             '<div class="stat"><div class="k">Purch. ROAS</div><div class="v">' +
@@ -1823,9 +1848,32 @@ function roasCell(v) {
   return '<span style="color:var(--down)">' + s + '</span>';
 }
 
+// Net profit = purchase revenue - spend. Green when the creative paid for
+// itself, red when it lost money. This is the ROI-positive signal.
+function netCell(v) {
+  if (v === undefined || v === null || v === 0) return '—';
+  var s = (v > 0 ? '+' : '−') + money(Math.abs(v));
+  if (v > 0) return '<span style="color:var(--up);font-weight:700">' + s + '</span>';
+  return '<span style="color:var(--down)">' + s + '</span>';
+}
+
 function perfColumns(view) {
   var k = K();
-  var cols = [
+  // The Ads table is the profit ledger: real purchase economics first, no
+  // horizontal scroll. Winners (revenue >= spend) sort and color to the top.
+  if (view === 'ads') {
+    return [
+      { key: 'cost', label: 'Spend', fmt: money },
+      { key: 'orders', label: 'Purch.', fmt: dec },
+      { key: 'vtOrders', label: 'View-thru purch.', fmt: dec },
+      { key: 'orderValue', label: 'Revenue', fmt: money },
+      { key: 'netProfit', label: 'Net profit', fmt: netCell },
+      { key: 'cpo', label: 'CPO',
+        fmt: function(v) { return v ? money(v) : '—'; } },
+      { key: 'purchaseRoas', label: 'ROAS', fmt: roasCell }
+    ];
+  }
+  return [
     { key: 'impressions', label: 'Impr.', fmt: int },
     { key: 'clicks', label: 'Clicks', fmt: int },
     { key: 'cost', label: 'Spend', fmt: money },
@@ -1841,19 +1889,6 @@ function perfColumns(view) {
     { key: 'viewRate', label: 'View rate', fmt: pct },
     { key: 'p100', label: 'Watched in full', fmt: pct }
   ];
-  // The Ads table also carries the real down-funnel purchase economics.
-  if (view === 'ads') {
-    cols = cols.concat([
-      { key: 'atc', label: 'Add to cart', fmt: dec },
-      { key: 'checkout', label: 'Checkout', fmt: dec },
-      { key: 'orders', label: 'Orders', fmt: dec },
-      { key: 'orderValue', label: 'Revenue', fmt: money },
-      { key: 'cpo', label: 'CPO',
-        fmt: function(v) { return v ? money(v) : '—'; } },
-      { key: 'purchaseRoas', label: 'Purch. ROAS', fmt: roasCell }
-    ]);
-  }
-  return cols;
 }
 
 function adCell(row) {
@@ -3153,7 +3188,11 @@ function buildPanels() {}
 
 function selectView(id) {
   ACTIVE = id;
-  SORT = { key: 'cost', asc: false };
+  // The Ads table leads with the winners: sort by net profit so the creatives
+  // that paid for themselves sit at the top. Everything else sorts by spend.
+  SORT = (id === 'ads')
+      ? { key: 'netProfit', asc: false }
+      : { key: 'cost', asc: false };
   buildNav();
   buildToolbar();
   render();
@@ -3269,11 +3308,24 @@ function buildToolbar() {
     return;
   }
 
+  // Ads and Videos carry real purchase economics, so both get a one-click
+  // "Profitable only" toggle that keeps just the creatives whose purchase
+  // revenue beat their spend.
+  var showProfit = (ACTIVE === 'ads' || isVideo);
+  var profitChip = showProfit
+      ? '<button class="filter profit-toggle" id="profitOnly" aria-pressed="' +
+        PROFIT_ONLY + '">✓ Profitable only</button>'
+      : '';
+
   bar.innerHTML =
     '<input id="search" type="search" placeholder="Filter by name">' +
+    profitChip +
     (isVideo
       ? '<div class="chips" id="videoChips"></div>' +
         '<select id="videoSort">' +
+          '<option value="netProfit">Sort by net profit</option>' +
+          '<option value="purchaseRoas">Sort by purchase ROAS</option>' +
+          '<option value="orders">Sort by purchases</option>' +
           '<option value="cost">Sort by spend</option>' +
           '<option value="conv">Sort by conversions</option>' +
           '<option value="cpa">Sort by cost per action</option>' +
@@ -3285,6 +3337,14 @@ function buildToolbar() {
     '<span class="count" id="count"></span>';
 
   document.getElementById('search').addEventListener('input', render);
+
+  if (showProfit) {
+    document.getElementById('profitOnly').onclick = function() {
+      PROFIT_ONLY = !PROFIT_ONLY;
+      this.setAttribute('aria-pressed', String(PROFIT_ONLY));
+      render();
+    };
+  }
 
   if (isVideo) {
     document.getElementById('videoChips').innerHTML =
@@ -3520,6 +3580,18 @@ function render() {
       return (r.channelMix || {})[CHANNEL_FILTER] > 0;
     });
   }
+  // Net profit is revenue minus spend; derive it if an older payload predates
+  // the server-side field so the column and sort still work after a hard reload.
+  if (ACTIVE === 'ads') {
+    rows.forEach(function(r) {
+      if (r.netProfit === undefined || r.netProfit === null) {
+        r.netProfit = (Number(r.orderValue) || 0) - (Number(r.cost) || 0);
+      }
+    });
+  }
+  if (PROFIT_ONLY && ACTIVE === 'ads') {
+    rows = rows.filter(function(r) { return (Number(r.purchaseRoas) || 0) >= 1; });
+  }
   if (term) {
     rows = rows.filter(function(r) {
       return view.first.search(r).toLowerCase().indexOf(term) !== -1;
@@ -3534,11 +3606,17 @@ function render() {
   });
 
   document.getElementById('count').textContent = rows.length + ' rows' +
+      (PROFIT_ONLY && ACTIVE === 'ads' ? ' · profitable' : '') +
       (CHANNEL_FILTER && ACTIVE === 'ads' ? ' · ' + CHANNEL_FILTER : '');
 
   if (!rows.length) {
     var why = 'Nothing matches. Clear the filter, or widen the window in the ' +
         'Settings tab and refresh.';
+    if (PROFIT_ONLY && ACTIVE === 'ads') {
+      why = 'No creative turned a real profit in this window — none returned ' +
+          'purchase revenue above its spend. Turn off "Profitable only" to see ' +
+          'every ad and where the money went.';
+    }
     if (ACTIVE === 'placements' && !view.rows().length) {
       why = DATA.placementsSkipped
           ? 'Placements are switched off. Set "Include placements" to TRUE in ' +
@@ -3561,7 +3639,11 @@ function render() {
       }).join('') + '</tr>';
 
   var body = rows.map(function(r) {
-    return '<tr><td class="name">' + view.first.cell(r) + '</td>' +
+    // Winner = the creative's purchase revenue beat its spend. Tint the row so
+    // the profitable ones read at a glance without hunting the ROAS column.
+    var win = ACTIVE === 'ads' && (Number(r.purchaseRoas) || 0) >= 1;
+    return '<tr' + (win ? ' class="win"' : '') + '><td class="name">' +
+        view.first.cell(r) + '</td>' +
         PERF.map(function(col) {
           var v = r[col.key];
           var blank = !v && (col.label === 'Per action' || col.label === 'ROAS' ||
