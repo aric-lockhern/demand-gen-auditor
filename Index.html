@@ -290,13 +290,14 @@
   .cu-by b { color: var(--ink); font-size: 13px; }
 
   .cu-band {
-    display: grid; grid-template-columns: repeat(6, 1fr); gap: 1px;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px;
     background: var(--rule); border: 1px solid var(--rule); border-radius: 12px;
     overflow: hidden; margin: 20px 0;
   }
   .cu-kpi { background: var(--card); padding: 14px 14px 16px; }
-  .cu-kpi.big { background: linear-gradient(180deg, #0F1B33 0%, #16305C 100%); }
-  .cu-kpi.big .cu-k, .cu-kpi.big .cu-s { color: rgba(255,255,255,.72); }
+  /* Lighter Lockhern-blue highlight for the headline metrics. */
+  .cu-kpi.big { background: linear-gradient(135deg, #317AE0 0%, #2E51C0 100%); }
+  .cu-kpi.big .cu-k, .cu-kpi.big .cu-s { color: rgba(255,255,255,.82); }
   .cu-kpi.big .cu-v { color: #fff; }
   .cu-k { font-size: 11.5px; color: var(--muted); text-transform: uppercase;
     letter-spacing: .04em; }
@@ -318,6 +319,8 @@
     letter-spacing: .06em; color: var(--muted); margin: 26px 0 12px; }
   .cu-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
   @media (max-width: 760px) { .cu-cols { grid-template-columns: 1fr; } }
+  /* Best & worst are stacked full-width, one under the other. */
+  .cu-stack { display: flex; flex-direction: column; gap: 16px; }
   .cu-col { border: 1px solid var(--rule); border-radius: 12px; padding: 14px 16px; }
   .cu-h { font-size: 14px; font-weight: 700; color: var(--ink); margin-bottom: 10px;
     display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
@@ -1857,10 +1860,10 @@ function drawClientUpdate() {
       .sort(function(a, b) { return b.net - a.net; });
   var best = (winners.length ? winners : ads.filter(function(a) {
         return a.orders > 0;
-      }).sort(function(a, b) { return b.orderValue - a.orderValue; })).slice(0, 3);
+      }).sort(function(a, b) { return b.orderValue - a.orderValue; })).slice(0, 5);
   var worst = ads.filter(function(a) {
         return a.cost >= PAUSE_MIN_SPEND && a.net < 0;
-      }).sort(function(a, b) { return a.net - b.net; }).slice(0, 3);
+      }).sort(function(a, b) { return a.net - b.net; }).slice(0, 5);
 
   // Winning audiences: group the profitable ads by ad group (the audience lives
   // in the ad-group name), most revenue first.
@@ -1919,10 +1922,8 @@ function drawClientUpdate() {
       '">' + roas.toFixed(2) + 'x</span>';
   var band = '<div class="cu-band">' +
     kpi('Total spend', money(spend), '', true) +
-    kpi('Real purchases', int(ordersDirect), 'click &amp; engaged', true) +
-    kpi('+ View-through', int(ordersTotal),
-      '+' + int(vt) + ' view-through', true) +
-    kpi('Revenue', money(revenue), 'purchases only') +
+    kpi('Real purchases', int(ordersTotal), 'on the purchase action', true) +
+    kpi('Revenue', money(revenue), 'purchases only', true) +
     kpi('ROAS', roasHtml, roas >= 1 ? 'net positive' : 'below breakeven') +
     kpi('Cost / purchase', ordersTotal ? money(cpo) : '—', money(aov) + ' AOV') +
   '</div>';
@@ -1938,13 +1939,15 @@ function drawClientUpdate() {
       '<div class="cu-s">' + int(checkouts) + ' × ' + money(aov) + ' AOV</div>' +
     '</div></div>';
 
-  // 6 best / worst
-  var perf = '<div class="cu-cols">' +
-    '<div class="cu-col"><div class="cu-h">Best performing ads</div>' +
+  // 6 best / worst — stacked full-width, top 5 of each
+  var perf = '<div class="cu-stack">' +
+    '<div class="cu-col"><div class="cu-h">Best performing ads ' +
+      '<span class="cu-h-s">top ' + best.length + ' by profit</span></div>' +
       (best.length ? best.map(function(a) { return cuAdRow(a, 'win'); }).join('')
                    : '<div class="cu-none">No profitable ads in this window.</div>') +
     '</div>' +
-    '<div class="cu-col"><div class="cu-h">Underperformers to cut</div>' +
+    '<div class="cu-col"><div class="cu-h">Underperformers to cut ' +
+      '<span class="cu-h-s">top ' + worst.length + ' by loss</span></div>' +
       (worst.length ? worst.map(function(a) { return cuAdRow(a, 'lose'); }).join('')
                     : '<div class="cu-none">Nothing spending above ' +
                       money(PAUSE_MIN_SPEND) + ' at a loss. </div>') +
