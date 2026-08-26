@@ -269,6 +269,112 @@
     border: 1px solid var(--rule); }
   .pill.gone { background: rgba(194,75,60,.12); color: var(--down); }
 
+  /* ---- Client update one-pager ---- */
+  .cu-actions { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .cu-warn { font-size: 12.5px; color: var(--down); }
+  .cu-report {
+    background: var(--card); border: 1px solid var(--rule); border-radius: 16px;
+    box-shadow: var(--lift); padding: 30px 32px; max-width: 940px;
+  }
+  .cu-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 16px; border-bottom: 2px solid var(--ink); padding-bottom: 16px;
+  }
+  .cu-title { font-family: var(--serif, var(--sans)); font-size: 25px;
+    font-weight: 700; color: var(--ink); letter-spacing: -.01em; }
+  .cu-sub { font-size: 13.5px; color: var(--muted); margin-top: 4px; }
+  .cu-by { font-size: 11.5px; color: var(--muted); text-align: right;
+    line-height: 1.5; }
+  .cu-by b { color: var(--ink); font-size: 13px; }
+
+  .cu-band {
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 1px;
+    background: var(--rule); border: 1px solid var(--rule); border-radius: 12px;
+    overflow: hidden; margin: 20px 0;
+  }
+  .cu-kpi { background: var(--card); padding: 14px 14px 16px; }
+  .cu-kpi.big { background: linear-gradient(180deg, #0F1B33 0%, #16305C 100%); }
+  .cu-kpi.big .cu-k, .cu-kpi.big .cu-s { color: rgba(255,255,255,.72); }
+  .cu-kpi.big .cu-v { color: #fff; }
+  .cu-k { font-size: 11.5px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: .04em; }
+  .cu-v { font-size: 22px; font-weight: 700; color: var(--ink); margin-top: 5px;
+    letter-spacing: -.01em; }
+  .cu-s { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  @media (max-width: 760px) { .cu-band { grid-template-columns: repeat(2, 1fr); } }
+
+  .cu-pipe {
+    display: flex; gap: 16px; align-items: stretch; margin-bottom: 8px;
+    border: 1px solid var(--rule); border-left: 4px solid var(--accent, #2F6BE0);
+    border-radius: 12px; padding: 16px 18px; background: var(--wash);
+  }
+  .cu-pipe-n { flex: 1; }
+  .cu-pipe-v { font-size: 19px; font-weight: 700; color: var(--ink); margin: 4px 0; }
+  .cu-pipe-val { text-align: right; min-width: 150px; }
+
+  .cu-sech { font-size: 12.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--muted); margin: 26px 0 12px; }
+  .cu-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 760px) { .cu-cols { grid-template-columns: 1fr; } }
+  .cu-col { border: 1px solid var(--rule); border-radius: 12px; padding: 14px 16px; }
+  .cu-h { font-size: 14px; font-weight: 700; color: var(--ink); margin-bottom: 10px;
+    display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .cu-h-s, .note-state { font-size: 11px; font-weight: 500; color: var(--muted); }
+  .cu-none { font-size: 12.5px; color: var(--muted); padding: 6px 0; }
+
+  .cu-ad { display: flex; align-items: center; gap: 10px; padding: 8px 0;
+    border-top: 1px solid var(--rule); }
+  .cu-ad:first-of-type { border-top: none; }
+  .cu-th { width: 46px; height: 30px; border-radius: 5px; object-fit: cover;
+    background: var(--wash); flex: none; display: block; }
+  .cu-ad-b { flex: 1; min-width: 0; }
+  .cu-ad-n { font-size: 13px; font-weight: 600; color: var(--ink);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cu-ad-m { font-size: 11px; color: var(--muted); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  .cu-ad-s { text-align: right; font-size: 11.5px; color: var(--muted);
+    display: flex; flex-direction: column; gap: 1px; flex: none; }
+  .cu-ad-s .cu-roas { font-weight: 700; }
+  .cu-ad.win .cu-th { box-shadow: inset 0 0 0 2px var(--up); }
+  .cu-ad.lose .cu-th { box-shadow: inset 0 0 0 2px var(--down); }
+
+  .cu-bar-row { display: flex; align-items: center; gap: 10px; margin: 7px 0;
+    font-size: 12.5px; }
+  .cu-bar-n { width: 130px; flex: none; color: var(--ink);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cu-bar-t { flex: 1; height: 9px; background: var(--wash); border-radius: 5px;
+    overflow: hidden; }
+  .cu-bar-t i { display: block; height: 100%; border-radius: 5px; }
+  .cu-bar-p { width: 38px; text-align: right; color: var(--muted); flex: none; }
+
+  .cu-aud { display: flex; justify-content: space-between; gap: 10px;
+    padding: 7px 0; border-top: 1px solid var(--rule); font-size: 12.5px; }
+  .cu-aud:first-of-type { border-top: none; }
+  .cu-aud-n { color: var(--ink); font-weight: 600; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  .cu-aud-v { color: var(--muted); flex: none; }
+
+  .cu-plan { margin-top: 26px; border: 1px solid var(--ink); border-radius: 12px;
+    padding: 16px 18px; }
+  .cu-plan-t { width: 100%; border: 1px solid var(--rule); border-radius: 8px;
+    padding: 12px; font-family: var(--sans); font-size: 13.5px; line-height: 1.6;
+    color: var(--ink); resize: vertical; box-sizing: border-box; }
+  .cu-plan-print { display: none; white-space: pre-wrap; font-size: 13.5px;
+    line-height: 1.6; color: var(--ink); }
+  .cu-plan-h { font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+
+  @media print {
+    body.printing-cu * { visibility: hidden; }
+    body.printing-cu #cuReport, body.printing-cu #cuReport * { visibility: visible; }
+    body.printing-cu #cuReport { position: absolute; left: 0; top: 0; width: 100%;
+      box-shadow: none; border: none; padding: 0; max-width: 100%; }
+    body.printing-cu #cuReport .cu-plan-t { display: none; }
+    body.printing-cu #cuReport .cu-plan-print { display: block; }
+    body.printing-cu #cuReport .cu-plan-h { display: none; }
+    body.printing-cu .cu-kpi.big { -webkit-print-color-adjust: exact;
+      print-color-adjust: exact; }
+  }
+
   .panel { display: none; }
   .panel.active { display: block; }
 
@@ -938,7 +1044,16 @@ var BRAND = <?!= brand ? brand : '{}' ?>;
 var OVERRIDES = <?!= overrides ? overrides : '{}' ?>;
 // Per-slide storyboard notes, keyed by slide key. Live-edited in the Storyboard
 // tab and saved back to the Commentary sheet via google.script.run.saveNote.
-var NOTES = (DATA && DATA.notes) || {};
+// Fresh notes injected by doGet win over whatever was baked into the cached
+// payload, so a plain reload shows the latest saved edits (e.g. the client plan).
+var FRESH_NOTES = <?!= notes ? notes : '{}' ?>;
+var NOTES = (function() {
+  var base = (DATA && DATA.notes) || {};
+  var out = {};
+  for (var k in base) out[k] = base[k];
+  for (var f in FRESH_NOTES) out[f] = FRESH_NOTES[f];
+  return out;
+})();
 var POV_TAGLINE = 'A full-funnel, creative-led approach to Demand Gen';
 
 if (!DATA) {
@@ -1606,6 +1721,268 @@ function drawRealImpact() {
     esc(r.purchaseAction || 'the purchase action') + ' — not the blended ' +
     'all-conversions column</span></div><div class="impact-grid">' + tiles +
     '</div>';
+}
+
+// --- Client update one-pager ----------------------------------------------
+// Everything the client needs in one clean, shareable page: spend, real
+// purchases (with and without view-through), CPO/ROAS, begin-checkout pipeline,
+// the best and worst ads, which formats and audiences are winning, and an
+// editable plan. Built entirely from the pulled data.
+var PLAN_KEY = 'client-update-plan';
+
+function cuAds() {
+  return (DATA.ads || []).map(function(a) {
+    var o = {};
+    for (var k in a) o[k] = a[k];
+    o.orders = Number(a.orders) || 0;
+    o.orderValue = Number(a.orderValue) || 0;
+    o.cost = Number(a.cost) || 0;
+    o.vtOrders = Number(a.vtOrders) || 0;
+    o.purchaseRoas = Number(a.purchaseRoas) || (o.cost ? o.orderValue / o.cost : 0);
+    o.net = (o.orderValue) - (o.cost);
+    return o;
+  });
+}
+
+// Seed the plan from the data so the box is never blank: scale winners, fix or
+// cut losers, and lean into the best format/audience. The user edits and it
+// saves.
+function seedPlan(ctx) {
+  var lines = [];
+  if (ctx.best.length) {
+    lines.push('• Scale the winners: increase budget and creative variants ' +
+      'behind ' + ctx.best.slice(0, 3).map(function(a) {
+        return '“' + (a.name || 'ad') + '”';
+      }).join(', ') + ' — they returned above breakeven ROAS.');
+  }
+  if (ctx.worst.length) {
+    lines.push('• Cut the drag: pause ' + ctx.worst.length + ' ad' +
+      (ctx.worst.length === 1 ? '' : 's') + ' that spent with no return, and ' +
+      'reallocate that budget to the winners.');
+  }
+  if (ctx.topFormat) {
+    lines.push('• Double down on ' + ctx.topFormat +
+      ', the format driving the most efficient volume; test more creative built ' +
+      'for it.');
+  }
+  if (ctx.topAudience) {
+    lines.push('• Expand the ' + ctx.topAudience + ' audience and build ' +
+      'look-alikes off it — it is converting best.');
+  }
+  lines.push('• Next: refresh creative on fatigued winners, tighten the ' +
+    'landing page, and re-review in two weeks.');
+  return lines.join('\n');
+}
+
+function cuAdRow(a, kind) {
+  var thumb = a.thumb
+    ? '<img class="cu-th" src="' + esc(a.thumb) + '" alt="" loading="lazy">'
+    : '<span class="cu-th"></span>';
+  var roas = a.orders ? roasCell(a.purchaseRoas) : (a.cost ? '0.00x' : '—');
+  var meta = [a.adGroup, a.type].filter(Boolean).join(' · ');
+  return '<div class="cu-ad ' + kind + '">' + thumb +
+    '<div class="cu-ad-b">' +
+      '<div class="cu-ad-n">' + esc(a.name || 'Untitled ad') + '</div>' +
+      '<div class="cu-ad-m">' + esc(meta) + '</div>' +
+    '</div>' +
+    '<div class="cu-ad-s">' +
+      '<span>' + money(a.cost) + ' spend</span>' +
+      '<span>' + dec(a.orders) + ' purch · ' + money(a.orderValue) + '</span>' +
+      '<span class="cu-roas">' + roas + '</span>' +
+    '</div></div>';
+}
+
+function drawClientUpdate() {
+  var ri = DATA.realImpact || {};
+  var fn = DATA.funnel || {};
+  var ac = DATA.account || {};
+  var ads = cuAds();
+
+  var spend = Number(ri.spend) || (DATA.totals && DATA.totals.cost) || 0;
+  var ordersTotal = Number(ri.orders) || 0;         // incl. view-through
+  var vt = Number(ri.viewThroughOrders) || 0;
+  var ordersDirect = Math.max(0, ordersTotal - vt); // click / engaged only
+  var revenue = Number(ri.revenue) || 0;
+  var roas = Number(ri.roas) || (spend ? revenue / spend : 0);
+  var cpo = Number(ri.cpo) || (ordersTotal ? spend / ordersTotal : 0);
+  var aov = ordersTotal ? revenue / ordersTotal : 0;
+  var checkouts = Number(fn.checkout) || 0;
+  var checkoutPipe = checkouts * aov;
+  var hasPurchase = !!(ri.purchaseAction);
+
+  // Best = ads that turned a profit, most profitable first. Worst = ads that
+  // spent past the floor and lost money, biggest loss first.
+  var winners = ads.filter(function(a) { return a.orders > 0 && a.net > 0; })
+      .sort(function(a, b) { return b.net - a.net; });
+  var best = (winners.length ? winners : ads.filter(function(a) {
+        return a.orders > 0;
+      }).sort(function(a, b) { return b.orderValue - a.orderValue; })).slice(0, 3);
+  var worst = ads.filter(function(a) {
+        return a.cost >= PAUSE_MIN_SPEND && a.net < 0;
+      }).sort(function(a, b) { return a.net - b.net; }).slice(0, 3);
+
+  // Winning audiences: group the profitable ads by ad group (the audience lives
+  // in the ad-group name), most revenue first.
+  var byAud = {};
+  (winners.length ? winners : best).forEach(function(a) {
+    var key = a.adGroup || '—';
+    var g = byAud[key] || (byAud[key] = { name: key, revenue: 0, orders: 0 });
+    g.revenue += a.orderValue; g.orders += a.orders;
+  });
+  var audiences = Object.keys(byAud).map(function(k) { return byAud[k]; })
+      .sort(function(a, b) { return b.revenue - a.revenue; }).slice(0, 4);
+
+  // Winning formats: the account's format split (Shorts / In-feed / In-stream…)
+  // by conversions, falling back to spend.
+  var surfaces = (DATA.surfaceMix || []).map(function(s) {
+    return { name: s.surface, val: Number(s.conversions) || 0,
+             cost: Number(s.cost) || 0, color: s.color || '#8A8F9E' };
+  });
+  var fmtMetricConv = surfaces.some(function(s) { return s.val > 0; });
+  surfaces.forEach(function(s) { if (!fmtMetricConv) s.val = s.cost; });
+  surfaces = surfaces.filter(function(s) { return s.val > 0; })
+      .sort(function(a, b) { return b.val - a.val; });
+  var fmtTotal = surfaces.reduce(function(t, s) { return t + s.val; }, 0);
+  var topFormat = surfaces.length ? surfaces[0].name : '';
+  var topAudience = audiences.length ? audiences[0].name : '';
+
+  var plan = (NOTES[PLAN_KEY] != null && NOTES[PLAN_KEY] !== '')
+      ? NOTES[PLAN_KEY]
+      : seedPlan({ best: best, worst: worst, topFormat: topFormat,
+                   topAudience: topAudience });
+
+  function kpi(label, value, sub, big) {
+    return '<div class="cu-kpi' + (big ? ' big' : '') + '">' +
+      '<div class="cu-k">' + esc(label) + '</div>' +
+      '<div class="cu-v">' + value + '</div>' +
+      (sub ? '<div class="cu-s">' + sub + '</div>' : '') + '</div>';
+  }
+
+  if (!spend && !ordersTotal) {
+    return '<div class="scroll"><div class="empty">No performance yet for this ' +
+      'window. Run <b>Refresh</b> on this account (with a purchase action set in ' +
+      'Settings) and the client update fills in automatically.</div></div>';
+  }
+
+  // Header
+  var head = '<div class="cu-head">' +
+    '<div><div class="cu-title">Demand Gen performance update</div>' +
+      '<div class="cu-sub">' + esc(ac.name || '') +
+      (ac.start ? ' · ' + esc(ac.start) + ' – ' + esc(ac.end) : '') +
+      '</div></div>' +
+    '<div class="cu-by">Prepared by<br><b>Lockhern Digital</b></div>' +
+  '</div>';
+
+  // 1–4 headline band
+  var roasHtml = '<span style="color:' + (roas >= 1 ? 'var(--up)' : 'var(--down)') +
+      '">' + roas.toFixed(2) + 'x</span>';
+  var band = '<div class="cu-band">' +
+    kpi('Total spend', money(spend), '', true) +
+    kpi('Real purchases', dec(ordersDirect), 'click &amp; engaged', true) +
+    kpi('+ View-through', dec(ordersTotal),
+      '+' + dec(vt) + ' view-through', true) +
+    kpi('Revenue', money(revenue), 'purchases only') +
+    kpi('ROAS', roasHtml, roas >= 1 ? 'net positive' : 'below breakeven') +
+    kpi('Cost / purchase', ordersTotal ? money(cpo) : '—', money(aov) + ' AOV') +
+  '</div>';
+
+  // 5 begin-checkout pipeline
+  var pipe = '<div class="cu-pipe">' +
+    '<div class="cu-pipe-n"><div class="cu-k">Pipeline in Begin Checkout</div>' +
+      '<div class="cu-pipe-v">' + dec(checkouts) + ' begin-checkouts</div>' +
+      '<div class="cu-s">People who started checkout but have not yet ' +
+      'purchased — the demand waiting just below the sale.</div></div>' +
+    '<div class="cu-pipe-val"><div class="cu-k">Est. pipeline value</div>' +
+      '<div class="cu-v">' + (checkoutPipe ? money(checkoutPipe) : '—') + '</div>' +
+      '<div class="cu-s">' + dec(checkouts) + ' × ' + money(aov) + ' AOV</div>' +
+    '</div></div>';
+
+  // 6 best / worst
+  var perf = '<div class="cu-cols">' +
+    '<div class="cu-col"><div class="cu-h">Best performing ads</div>' +
+      (best.length ? best.map(function(a) { return cuAdRow(a, 'win'); }).join('')
+                   : '<div class="cu-none">No profitable ads in this window.</div>') +
+    '</div>' +
+    '<div class="cu-col"><div class="cu-h">Underperformers to cut</div>' +
+      (worst.length ? worst.map(function(a) { return cuAdRow(a, 'lose'); }).join('')
+                    : '<div class="cu-none">Nothing spending above ' +
+                      money(PAUSE_MIN_SPEND) + ' at a loss. </div>') +
+    '</div></div>';
+
+  // 7 winning segments
+  var fmtBars = surfaces.slice(0, 5).map(function(s) {
+    var wpct = fmtTotal ? Math.round(s.val / fmtTotal * 100) : 0;
+    return '<div class="cu-bar-row"><span class="cu-bar-n">' + esc(s.name) +
+      '</span><span class="cu-bar-t"><i style="width:' + wpct + '%;background:' +
+      s.color + '"></i></span><span class="cu-bar-p">' + wpct + '%</span></div>';
+  }).join('') || '<div class="cu-none">No format split reported.</div>';
+
+  var audRows = audiences.length ? audiences.map(function(g) {
+    return '<div class="cu-aud"><span class="cu-aud-n">' + esc(g.name) +
+      '</span><span class="cu-aud-v">' + money(g.revenue) + ' · ' +
+      dec(g.orders) + ' purch</span></div>';
+  }).join('') : '<div class="cu-none">Audience is read from ad-group names; ' +
+    'none of the winners carry one.</div>';
+
+  var seg = '<div class="cu-cols">' +
+    '<div class="cu-col"><div class="cu-h">Winning formats ' +
+      '<span class="cu-h-s">Shorts vs in-feed vs in-stream</span></div>' +
+      fmtBars + '</div>' +
+    '<div class="cu-col"><div class="cu-h">Winning audiences ' +
+      '<span class="cu-h-s">by ad group</span></div>' + audRows + '</div>' +
+  '</div>';
+
+  // 8 plan (editable)
+  var planBlock = '<div class="cu-plan">' +
+    '<div class="cu-h">What we are going to do with this ' +
+      '<span class="note-state" id="ns-' + PLAN_KEY + '"></span></div>' +
+    '<textarea class="cu-plan-t" id="cuPlan" data-key="' + PLAN_KEY +
+      '" rows="6">' + esc(plan) + '</textarea>' +
+    '<div class="cu-plan-print" id="cuPlanPrint">' + esc(plan) + '</div>' +
+    '<div class="cu-plan-h">Edit freely — this saves automatically and is ' +
+      'yours to send.</div>' +
+  '</div>';
+
+  var toolbar = '<div class="cu-actions">' +
+    '<button class="pb-btn" id="cuPrint">🖨 Print / Save as PDF</button>' +
+    (hasPurchase ? '' : '<span class="cu-warn">No purchase action set in ' +
+      'Settings — purchase numbers will read 0 until you pick one.</span>') +
+  '</div>';
+
+  return '<div class="scroll">' + toolbar +
+    '<div class="cu-report" id="cuReport">' + head + band + pipe +
+    '<div class="cu-sech">Best &amp; worst creative</div>' + perf +
+    '<div class="cu-sech">What is working</div>' + seg +
+    planBlock + '</div></div>';
+}
+
+function bindClientUpdate() {
+  var area = document.getElementById('cuPlan');
+  if (area) {
+    var timer = null;
+    area.addEventListener('input', function() {
+      NOTES[PLAN_KEY] = area.value;
+      var mirror = document.getElementById('cuPlanPrint');
+      if (mirror) mirror.textContent = area.value;
+      var st = document.getElementById('ns-' + PLAN_KEY);
+      if (st) { st.textContent = 'saving…'; st.style.color = 'var(--muted)';
+        st.className = 'note-state show'; }
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function() {
+        saveNoteToServer(PLAN_KEY, area.value);
+      }, 700);
+    });
+  }
+  var pr = document.getElementById('cuPrint');
+  if (pr) pr.onclick = function() {
+    var mirror = document.getElementById('cuPlanPrint');
+    if (mirror && area) mirror.textContent = area.value;
+    document.body.classList.add('printing-cu');
+    window.print();
+    setTimeout(function() {
+      document.body.classList.remove('printing-cu');
+    }, 500);
+  };
 }
 
 // --- KPIs -----------------------------------------------------------------
@@ -3037,6 +3414,8 @@ var VIEWS = {
     rows: function() { return ((DATA.settings || {}).campaigns) || []; } },
   conversions: { label: 'Conversions', custom: true,
     rows: function() { return DATA.conversionActions || []; } },
+  clientUpdate: { label: 'Client update', custom: true,
+    rows: function() { return DATA.ads || []; } },
   ads: { label: 'Ads', rows: function() { return DATA.ads; },
     first: { label: 'Ad', cell: adCell,
       search: function(r) {
@@ -3135,6 +3514,7 @@ var APP_MODES = [
 
 var GROUPS = [
   { label: 'Deck', views: ['story'], mode: 'audit' },
+  { label: 'Client update', views: ['clientUpdate'], mode: 'analyze' },
   { label: 'Creative', views: ['videos', 'ads', 'assets'], mode: 'analyze' },
   { label: 'Placement', views: ['surfaces', 'landingPages', 'placements'], mode: 'analyze' },
   { label: 'Audience', views: ['audiences', 'demographics', 'audienceValidation'], mode: 'analyze' },
@@ -3351,7 +3731,7 @@ function buildToolbar() {
   // These views are showcases, not filterable tables: a count, no search box.
   if (ACTIVE === 'settings' || ACTIVE === 'landingPages' ||
       ACTIVE === 'strategy' || ACTIVE === 'aiAnalysis' ||
-      ACTIVE === 'audienceValidation') {
+      ACTIVE === 'audienceValidation' || ACTIVE === 'clientUpdate') {
     bar.innerHTML = '<span class="count" id="count"></span>';
     return;
   }
@@ -3630,6 +4010,12 @@ function render() {
 
   if (ACTIVE === 'conversions') {
     panel.innerHTML = drawConversions(term);
+    return;
+  }
+
+  if (ACTIVE === 'clientUpdate') {
+    panel.innerHTML = drawClientUpdate();
+    bindClientUpdate();
     return;
   }
 

@@ -597,6 +597,11 @@ function doGet(e) {
   applyBrandLogos_();
   template.brand = JSON.stringify(BRAND).replace(/</g, '\\u003c');
   template.overrides = JSON.stringify(readOverrides_()).replace(/</g, '\\u003c');
+  // Notes (incl. the client-update plan) are re-read fresh so a plain reload
+  // shows the latest edits without a full Refresh, same as labels/overrides.
+  var freshNotes = {};
+  try { freshNotes = readCommentary_(); } catch (eN) { freshNotes = {}; }
+  template.notes = JSON.stringify(freshNotes).replace(/</g, '\\u003c');
 
   return template.evaluate()
       .setTitle('Demand Gen Audit')
