@@ -3122,6 +3122,7 @@ function buildDeckPrompt_(data) {
   function money0(v) {
     return (a.currency || '') + ' ' + Math.round(Number(v) || 0).toLocaleString();
   }
+  function int(v) { return Math.round(Number(v) || 0).toLocaleString(); }
   function pct1(v) { return ((Number(v) || 0) * 100).toFixed(1) + '%'; }
   function pct0(v) { return Math.round((Number(v) || 0) * 100) + '%'; }
   function dlt(key) {
