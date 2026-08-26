@@ -359,6 +359,24 @@
     overflow: hidden; text-overflow: ellipsis; }
   .cu-aud-v { color: var(--muted); flex: none; }
 
+  /* Winners-only scenario table. */
+  .cu-scenario { border-color: var(--up); }
+  .cu-sc-wrap { overflow-x: auto; }
+  .cu-sc { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .cu-sc th { text-align: right; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .04em; color: var(--muted); font-weight: 600;
+    padding: 6px 10px; border-bottom: 1px solid var(--rule); }
+  .cu-sc th:first-child, .cu-sc td:first-child { text-align: left; }
+  .cu-sc td { text-align: right; padding: 9px 10px; color: var(--ink);
+    font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--rule); }
+  .cu-sc-l { font-weight: 600; }
+  .cu-sc tr.cu-sc-win td { background: rgba(27,127,90,.08); }
+  .cu-sc tr.cu-sc-win td:first-child { box-shadow: inset 3px 0 0 var(--up);
+    font-weight: 700; }
+  .cu-sc-note { font-size: 12.5px; color: var(--muted); line-height: 1.6;
+    margin-top: 10px; }
+  .cu-sc-note b { color: var(--ink); }
+
   .cu-plan { margin-top: 26px; border: 1px solid var(--ink); border-radius: 12px;
     padding: 16px 18px; }
   .cu-plan-t { width: 100%; border: 1px solid var(--rule); border-radius: 8px;
@@ -376,7 +394,8 @@
     body.printing-cu #cuReport .cu-plan-t { display: none; }
     body.printing-cu #cuReport .cu-plan-print { display: block; }
     body.printing-cu #cuReport .cu-plan-h { display: none; }
-    body.printing-cu .cu-kpi.big { -webkit-print-color-adjust: exact;
+    body.printing-cu .cu-kpi.big,
+    body.printing-cu .cu-sc-win td { -webkit-print-color-adjust: exact;
       print-color-adjust: exact; }
   }
 
@@ -1865,6 +1884,27 @@ function drawClientUpdate() {
         return a.cost >= PAUSE_MIN_SPEND && a.net < 0;
       }).sort(function(a, b) { return a.net - b.net; }).slice(0, 5);
 
+  // Winners-only scenario: if we only ran the net-positive ROAS ads (the ones we
+  // recommend keeping), how efficient would the account look? Compared against
+  // the same ad-level total so the two rows are apples to apples.
+  var keepers = ads.filter(function(a) {
+    return a.orders > 0 && (Number(a.purchaseRoas) || 0) >= 1;
+  });
+  var allS = { spend: 0, orders: 0, rev: 0 };
+  ads.forEach(function(a) {
+    allS.spend += a.cost; allS.orders += a.orders; allS.rev += a.orderValue;
+  });
+  var winS = { spend: 0, orders: 0, rev: 0 };
+  keepers.forEach(function(a) {
+    winS.spend += a.cost; winS.orders += a.orders; winS.rev += a.orderValue;
+  });
+  allS.roas = allS.spend ? allS.rev / allS.spend : 0;
+  allS.cpo = allS.orders ? allS.spend / allS.orders : 0;
+  winS.roas = winS.spend ? winS.rev / winS.spend : 0;
+  winS.cpo = winS.orders ? winS.spend / winS.orders : 0;
+  var wastedSpend = Math.max(0, allS.spend - winS.spend);
+  var revKept = allS.rev ? winS.rev / allS.rev : 0;
+
   // Winning audiences: group the profitable ads by ad group (the audience lives
   // in the ad-group name), most revenue first.
   var byAud = {};
@@ -1953,6 +1993,40 @@ function drawClientUpdate() {
                       money(PAUSE_MIN_SPEND) + ' at a loss. </div>') +
     '</div></div>';
 
+  // 6b winners-only scenario: how efficient the account looks if we run only the
+  // net-positive ROAS ads.
+  function scoreRow(label, s, cls) {
+    var roasTxt = '<span style="color:' +
+      (s.roas >= 1 ? 'var(--up)' : 'var(--down)') + ';font-weight:700">' +
+      s.roas.toFixed(2) + 'x</span>';
+    return '<tr class="' + (cls || '') + '"><td class="cu-sc-l">' + label +
+      '</td><td>' + money(s.spend) + '</td><td>' + int(s.orders) +
+      '</td><td>' + money(s.rev) + '</td><td>' + roasTxt + '</td><td>' +
+      (s.orders ? money(s.cpo) : '—') + '</td></tr>';
+  }
+  var scenario = keepers.length ? (
+    '<div class="cu-sech">If we only ran the winners</div>' +
+    '<div class="cu-col cu-scenario">' +
+      '<div class="cu-h">Keep only the net-positive ROAS ads ' +
+        '<span class="cu-h-s">' + keepers.length + ' ad' +
+        (keepers.length === 1 ? '' : 's') + ' with ROAS ≥ 1x</span></div>' +
+      '<div class="cu-sc-wrap"><table class="cu-sc"><thead><tr>' +
+        '<th></th><th>Spend</th><th>Purchases</th><th>Revenue</th>' +
+        '<th>ROAS</th><th>Cost / purch.</th></tr></thead><tbody>' +
+        scoreRow('All ads today', allS, '') +
+        scoreRow('Winners only', winS, 'cu-sc-win') +
+      '</tbody></table></div>' +
+      '<div class="cu-sc-note">Cutting the rest removes <b>' +
+        money(wastedSpend) + '</b> of spend that returned below breakeven, ' +
+        'keeps <b>' + pct0(revKept) + '</b> of the revenue, and lifts blended ' +
+        'ROAS from <b>' + allS.roas.toFixed(2) + 'x</b> to <b>' +
+        winS.roas.toFixed(2) + 'x</b>' +
+        (allS.cpo && winS.cpo ? ' while cutting cost per purchase from <b>' +
+          money(allS.cpo) + '</b> to <b>' + money(winS.cpo) + '</b>' : '') +
+        '.</div>' +
+    '</div>'
+  ) : '';
+
   // 7 winning segments
   var fmtBars = surfaces.slice(0, 5).map(function(s) {
     var wpct = fmtTotal ? Math.round(s.val / fmtTotal * 100) : 0;
@@ -1998,6 +2072,7 @@ function drawClientUpdate() {
   return '<div class="scroll">' + toolbar +
     '<div class="cu-report" id="cuReport">' + head + band + pipe +
     '<div class="cu-sech">Best &amp; worst creative</div>' + perf +
+    scenario +
     '<div class="cu-sech">What is working</div>' + seg +
     planBlock + '</div></div>';
 }
