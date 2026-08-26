@@ -132,6 +132,30 @@
     display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
     gap: 10px; margin-bottom: 32px;
   }
+  /* Real-impact hero band: the purchase truth, kept apart from the KPI grid. */
+  .impact-card {
+    background: linear-gradient(135deg, #0E2970, #317AE0); color: #fff;
+    border-radius: 16px; padding: 20px 22px; margin-bottom: 20px;
+    box-shadow: var(--lift);
+  }
+  .impact-head { font-family: var(--display); font-size: 18px; font-weight: 650; }
+  .impact-sub {
+    display: block; font-family: var(--sans); font-size: 12.5px; font-weight: 400;
+    opacity: .85; margin-top: 3px;
+  }
+  .impact-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 14px; margin-top: 16px;
+  }
+  .impact-tile {
+    background: rgba(255, 255, 255, .1); border-radius: 12px; padding: 13px 15px;
+  }
+  .impact-tile .il { font-size: 12.5px; opacity: .85; }
+  .impact-tile .iv {
+    font-size: 27px; font-weight: 700; letter-spacing: -.02em; margin-top: 3px;
+  }
+  .impact-tile .is { font-size: 11.5px; opacity: .8; margin-top: 3px; }
+
   .funnel-card { margin-bottom: 32px; }
   .funnelviz { margin-top: 12px; }
   .funnelviz .fn-row { display: flex; justify-content: center; margin: 7px 0; }
@@ -952,6 +976,7 @@ document.getElementById('root').innerHTML =
       '<button data-mode="conversions">Conversions</button>' +
       '<button data-mode="all">All conversions</button></div>' +
     '<span class="mode-hint" id="modeHint"></span></div>' +
+  '<div class="impact-card analyze-only" id="impactCard"></div>' +
   '<div class="kpis analyze-only" id="kpis"></div>' +
   '<div class="card funnel-card analyze-only" id="funnelCard"></div>' +
   '<nav class="tabs" id="tabs"></nav>' +
@@ -1464,16 +1489,15 @@ function drawFunnel() {
   var el = document.getElementById('funnelCard');
   if (!el) return;
   var f = DATA.funnel;
-  if (!f || (!f.impressions && !f.orders)) { el.style.display = 'none'; return; }
+  if (!f || (!f.pageViews && !f.orders)) { el.style.display = 'none'; return; }
   el.style.display = '';
   var stages = [
-    { label: 'Impressions', v: f.impressions || 0 },
-    { label: 'Views', v: f.views || 0 },
+    { label: 'Page views', v: f.pageViews || 0 },
     { label: 'Add to cart', v: f.atc || 0 },
     { label: 'Begin checkout', v: f.checkout || 0 },
     { label: 'Orders', v: f.orders || 0, rev: f.revenue || 0 }
-  ].filter(function(s, i) { return i === 0 || i === 4 || s.v > 0; });
-  var widths = [100, 82, 64, 46, 28];
+  ].filter(function(s, i) { return i === 0 || i === 3 || s.v > 0; });
+  var widths = [100, 74, 52, 32];
   var body = stages.map(function(s, i) {
     var prev = i > 0 ? stages[i - 1].v : 0;
     var rate = (i > 0 && prev) ? '  ·  ' + pct0(s.v / prev) + ' of prior' : '';
@@ -1487,6 +1511,35 @@ function drawFunnel() {
   }).join('');
   el.innerHTML = '<div class="section-label">Full-funnel impact ' +
     '(Demand Gen, whole account)</div><div class="funnelviz">' + body + '</div>';
+}
+
+// The headline that must not hide: real purchase impact (orders including
+// view-through, revenue, ROAS, CPO) on the actual purchase action, kept apart
+// from the blended KPI grid.
+function drawRealImpact() {
+  var el = document.getElementById('impactCard');
+  if (!el) return;
+  var r = DATA.realImpact;
+  if (!r || (!r.orders && !r.revenue)) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  function tile(label, value, sub) {
+    return '<div class="impact-tile"><div class="il">' + esc(label) + '</div>' +
+      '<div class="iv">' + value + '</div>' +
+      (sub ? '<div class="is">' + sub + '</div>' : '') + '</div>';
+  }
+  var roas = (Number(r.roas) || 0).toFixed(2) + 'x';
+  var tiles =
+    tile('Orders', int(r.orders),
+      r.viewThroughOrders ? int(r.viewThroughOrders) + ' via view-through' : '') +
+    tile('Revenue', money(r.revenue), 'real purchases only') +
+    tile('ROAS', '<span style="color:' + (r.roas >= 1 ? '#8FE3B0' : '#FFC9C9') +
+      '">' + roas + '</span>', r.roas >= 1 ? 'net positive' : 'below breakeven') +
+    tile('Cost per order', r.orders ? money(r.cpo) : '—', money(r.spend) + ' spend');
+  el.innerHTML = '<div class="impact-head">Real Demand Gen impact' +
+    '<span class="impact-sub">Purchases (incl. view-through) on ' +
+    esc(r.purchaseAction || 'the purchase action') + ' — not the blended ' +
+    'all-conversions column</span></div><div class="impact-grid">' + tiles +
+    '</div>';
 }
 
 // --- KPIs -----------------------------------------------------------------
@@ -3580,6 +3633,7 @@ drawReadout();
 drawSpectrum();
 drawMode();
 drawKpis();
+drawRealImpact();
 drawFunnel();
 buildPanels();
 buildNav();

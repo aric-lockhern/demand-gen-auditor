@@ -101,7 +101,8 @@ var CONFIG = {
   // force a specific one.
   PURCHASE_ACTION: '',
   ATC_ACTION: '',
-  CHECKOUT_ACTION: ''
+  CHECKOUT_ACTION: '',
+  PAGEVIEW_ACTION: ''   // top of the ecommerce funnel; blank = highest-volume page view
 };
 
 var CHANNELS = {
@@ -729,9 +730,13 @@ function auditAccount_(customerId) {
   data.funnelActions = pickFunnelActions_(data.conversionActions);
   attachVideoFunnel_(data.videos, data.funnelActions);
   attachAdFunnel_(data.ads, range.current, data.funnelActions);
-  data.funnel = accountFunnel_(data.totals, data.conversionActions, data.funnelActions);
   data.totals = rollup_(data.campaigns);
   data.prior = range.prior ? rollup_(pullCampaigns_(range.prior)) : null;
+  // Real purchase impact + the ecommerce funnel. Both need totals, so compute
+  // them here, after the rollup.
+  data.realImpact = realImpact_(data.totals, data.conversionActions,
+      data.funnelActions);
+  data.funnel = accountFunnel_(data.conversionActions, data.funnelActions);
   data.channelMix = rollupBy_(data.channels, 'channel');
   data.surfaceMix = rollupBy_(data.surfaces, 'surface');
   data.surfaceMix.forEach(function(row) {
@@ -1939,6 +1944,7 @@ function pullConversionActions_(dateClause) {
        'metrics.all_conversions'],
       [['metrics.all_conversions_value'],
        ['metrics.conversions', 'metrics.conversions_value'],
+       ['metrics.view_through_conversions'],
        ['segments.conversion_action_category']],
       DGEN + ' AND ' + dateClause, 'metrics.all_conversions DESC');
 
@@ -1950,7 +1956,8 @@ function pullConversionActions_(dateClause) {
       allConversions: num_(get_(r, 'metrics.allConversions')),
       allConvValue: num_(get_(r, 'metrics.allConversionsValue')),
       conversions: num_(get_(r, 'metrics.conversions')),
-      convValue: num_(get_(r, 'metrics.conversionsValue'))
+      convValue: num_(get_(r, 'metrics.conversionsValue')),
+      viewThrough: num_(get_(r, 'metrics.viewThroughConversions'))
     };
   }).filter(function(r) {
     return r.allConversions > 0 || r.conversions > 0;
@@ -2077,6 +2084,7 @@ function pickFunnelActions_(actions) {
     return pool.length ? pool[0].name : '';
   }
   return {
+    pageView: CONFIG.PAGEVIEW_ACTION || pick(/page.?view/, false),
     purchase: CONFIG.PURCHASE_ACTION || pick(/purchase/, true),
     atc: CONFIG.ATC_ACTION || pick(/cart/, false),
     checkout: CONFIG.CHECKOUT_ACTION || pick(/checkout/, false)
@@ -2147,28 +2155,55 @@ function attachAdFunnel_(ads, dateClause, sel) {
   });
 }
 
-/**
- * Whole-account full-funnel snapshot for the reverse-pyramid visual:
- * impressions -> views -> add to cart -> begin checkout -> orders (+ revenue).
- * ATC / checkout / orders come from the chosen conversion actions summed across
- * the account; views and impressions from the rolled-up totals.
- */
-function accountFunnel_(totals, accountConvActions, sel) {
-  var byAction = {};
+/** Sum the account's conversion-action rows by action name. */
+function convActionTotals_(accountConvActions) {
+  var by = {};
   (accountConvActions || []).forEach(function(a) {
-    var g = byAction[a.action] || (byAction[a.action] = { all: 0, val: 0 });
-    g.all += a.allConversions || 0; g.val += a.allConvValue || 0;
+    var g = by[a.action] || (by[a.action] = { all: 0, val: 0, vt: 0 });
+    g.all += a.allConversions || 0;
+    g.val += a.allConvValue || 0;
+    g.vt += a.viewThrough || 0;
   });
-  function all(name) { return name && byAction[name] ? byAction[name].all : 0; }
-  function val(name) { return name && byAction[name] ? byAction[name].val : 0; }
+  return by;
+}
+
+/**
+ * The ecommerce funnel for the reverse-pyramid visual, from the conversion
+ * actions: page views -> add to cart -> begin checkout -> orders (+ revenue).
+ * Impressions are dropped — they say nothing about intent; page views are the
+ * meaningful top of funnel.
+ */
+function accountFunnel_(accountConvActions, sel) {
+  var by = convActionTotals_(accountConvActions);
+  function all(name) { return name && by[name] ? by[name].all : 0; }
+  function val(name) { return name && by[name] ? by[name].val : 0; }
   return {
-    impressions: (totals || {}).impressions || 0,
-    views: (totals || {}).videoViews || 0,
-    clicks: (totals || {}).clicks || 0,
+    pageViews: all(sel.pageView),
     atc: all(sel.atc),
     checkout: all(sel.checkout),
     orders: all(sel.purchase),
     revenue: val(sel.purchase)
+  };
+}
+
+/**
+ * The headline real purchase impact for the whole account, kept out of the
+ * blended KPI grid: real orders (including view-through purchases), the
+ * view-through portion, purchase revenue, ROAS and CPO, all on the chosen
+ * purchase action only (not the inflated all-conversions value).
+ */
+function realImpact_(totals, accountConvActions, sel) {
+  var by = convActionTotals_(accountConvActions);
+  var p = (sel.purchase && by[sel.purchase]) || { all: 0, val: 0, vt: 0 };
+  var spend = (totals || {}).cost || 0;
+  return {
+    purchaseAction: sel.purchase || '',
+    spend: spend,
+    orders: p.all,                 // click/engaged + view-through purchases
+    viewThroughOrders: p.vt,       // the portion last-click misses
+    revenue: p.val,
+    roas: spend ? p.val / spend : 0,
+    cpo: p.all ? spend / p.all : 0
   };
 }
 
@@ -3114,21 +3149,36 @@ function buildDeckPrompt_(data) {
     });
     push('');
   }
+  var ri = data.realImpact;
+  if (ri && (ri.orders || ri.revenue)) {
+    push('## Real Demand Gen impact (whole account). Lead the executive summary ' +
+      'with THIS, not the blended all-conversions numbers.');
+    push('');
+    push('These are the real purchase numbers on the "' + (ri.purchaseAction ||
+      'purchase') + '" action only (the all-conversions column double counts page ' +
+      'views and cart events, so ignore it): ' + int(ri.orders) + ' orders (of ' +
+      'which ' + int(ri.viewThroughOrders) + ' were view-through, the credit a ' +
+      'last-click lens misses), ' + money0(ri.revenue) + ' in revenue on ' +
+      money0(ri.spend) + ' spend, a ROAS of ' + (Number(ri.roas) || 0).toFixed(2) +
+      'x and a cost per order of ' + money0(ri.cpo) + '. State the ROAS and CPO as ' +
+      'the headline result.');
+    push('');
+  }
   var fn = data.funnel;
-  if (fn && (fn.impressions || fn.orders)) {
+  if (fn && (fn.pageViews || fn.orders)) {
     push('## Full-funnel impact (whole Demand Gen account).');
     push('');
     push('Render this as a REVERSE-PYRAMID FUNNEL on the executive summary (slide ' +
       '3): each stage a centred bar narrower than the one above, labelled with the ' +
-      'number and, from Views down, its conversion rate from the stage above. It ' +
+      'number and its conversion rate from the stage above. Use PAGE VIEWS as the ' +
+      'top of funnel, not impressions (impressions say nothing about intent). It ' +
       'visualises what a purchase-only lens misses: the channel drives real down-' +
       'funnel pipeline (Add to Cart, Begin checkout) above the orders. Stages, ' +
       'widest to narrowest:');
     function frate(v, p) { return p ? ' (' + (v / p * 100).toFixed(1) + '% of prior)' : ''; }
-    push('- Impressions: ' + Math.round(fn.impressions));
-    push('- Views: ' + Math.round(fn.views) + frate(fn.views, fn.impressions));
+    push('- Page views: ' + Math.round(fn.pageViews));
     push('- Add to cart: ' + (Number(fn.atc) || 0).toFixed(0) +
-        frate(fn.atc, fn.views));
+        frate(fn.atc, fn.pageViews));
     push('- Begin checkout: ' + (Number(fn.checkout) || 0).toFixed(0) +
         frate(fn.checkout, fn.atc));
     push('- Orders: ' + (Number(fn.orders) || 0).toFixed(0) +
@@ -6922,6 +6972,7 @@ function savePayload_(data) {
     }),
     funnelActions: data.funnelActions || null,
     funnel: data.funnel || null,
+    realImpact: data.realImpact || null,
     conversionActions: data.conversionActions || [],
     surfaceMix: data.surfaceMix || [],
     deviceMix: data.deviceMix || [],
