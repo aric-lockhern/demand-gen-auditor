@@ -27,7 +27,14 @@ var CONFIG = {
   EMAIL: 'aric@lockherndigital.com',   // where to send the ready-to-paste prompt
   DAYS: 90,                            // reporting window (whole days, ends yesterday)
   TOP_ROWS: 15,                        // longest table printed in the prompt
-  SAVE_THUMBNAILS: true                // download each video's thumbnail to Drive
+  SAVE_THUMBNAILS: true,               // download each video's thumbnail to Drive
+  // Per-video down-funnel economics. Leave blank to auto-pick: the PURCHASE
+  // action fed to bidding (so ROAS matches what you see in the UI), and the
+  // highest-volume Add-to-Cart / Begin-checkout action. To force a specific one,
+  // paste its exact conversion action name (from the Conversion actions list).
+  PURCHASE_ACTION: '',
+  ATC_ACTION: '',
+  CHECKOUT_ACTION: ''
 };
 
 var WARN = [];
@@ -108,12 +115,14 @@ function main() {
     var aid = String(r.asset.id);
     var yt = (r.asset.youtubeVideoAsset || {}).youtubeVideoId || '';
     var v = byVid[aid] || (byVid[aid] = {
+      id: aid,
       title: (r.asset.youtubeVideoAsset || {}).youtubeVideoTitle ||
              r.asset.name || ('Video ' + aid),
       youtubeId: yt,
       url: yt ? 'https://www.youtube.com/watch?v=' + yt : '',
       thumb: yt ? 'https://i.ytimg.com/vi/' + yt + '/hqdefault.jpg' : '',
-      impr: 0, cost: 0, conv: 0, rev: 0, vtc: 0
+      impr: 0, cost: 0, conv: 0, rev: 0, vtc: 0,
+      orders: 0, orderVal: 0, atc: 0, checkout: 0
     });
     v.impr += num_(r.metrics.impressions);
     v.cost += micros_(r.metrics.costMicros);
@@ -201,19 +210,47 @@ function main() {
   var caBy = {};
   safeSearch_(
     'SELECT segments.conversion_action_name, segments.conversion_action_category, ' +
-    'metrics.all_conversions, metrics.conversions FROM campaign WHERE ' +
-    "campaign.advertising_channel_type = 'DEMAND_GEN' AND " + range.clause)
-    .forEach(function(r) {
+    'metrics.all_conversions, metrics.all_conversions_value, metrics.conversions ' +
+    "FROM campaign WHERE campaign.advertising_channel_type = 'DEMAND_GEN' AND " +
+    range.clause).forEach(function(r) {
       var nm = r.segments.conversionActionName || 'Unnamed';
       var a = caBy[nm] || (caBy[nm] = { action: nm,
         category: pretty_(r.segments.conversionActionCategory),
-        all: 0, conv: 0 });
+        rawCat: String(r.segments.conversionActionCategory || ''),
+        all: 0, val: 0, conv: 0 });
       a.all += num_(r.metrics.allConversions);
+      a.val += num_(r.metrics.allConversionsValue);
       a.conv += num_(r.metrics.conversions);
     });
   var conversions = Object.keys(caBy).map(function(k) { return caBy[k]; })
       .filter(function(a) { return a.all > 0 || a.conv > 0; })
       .sort(function(a, b) { return b.all - a.all; });
+
+  // Which conversion action is an ORDER, an ATC, a Begin-checkout. Prefer the
+  // purchase action fed to bidding (conv > 0) so ROAS matches the UI; otherwise
+  // the highest-value/volume action in that category. Config overrides win.
+  var purchaseAction = CONFIG.PURCHASE_ACTION || (function() {
+    var bid = conversions.filter(function(a) {
+      return a.rawCat.indexOf('PURCHASE') !== -1 && a.conv > 0; });
+    var pool = bid.length ? bid : conversions.filter(function(a) {
+      return a.rawCat.indexOf('PURCHASE') !== -1; });
+    pool.sort(function(a, b) { return b.val - a.val; });
+    return pool.length ? pool[0].action : '';
+  })();
+  var atcAction = CONFIG.ATC_ACTION || pickByVol_(conversions, 'ADD_TO_CART');
+  var checkoutAction = CONFIG.CHECKOUT_ACTION ||
+      pickByVol_(conversions, 'BEGIN_CHECKOUT');
+
+  // ---- per-video down-funnel conversions (segmented by conversion action) ----
+  var vconv = pullVideoConversions_(range.clause, purchaseAction, atcAction,
+      checkoutAction);
+  videos.forEach(function(v) {
+    var c = vconv[v.id] || { orders: 0, orderVal: 0, atc: 0, checkout: 0 };
+    v.orders = c.orders; v.orderVal = c.orderVal; v.atc = c.atc;
+    v.checkout = c.checkout;
+    v.cpo = v.orders ? v.cost / v.orders : 0;      // real cost per order
+    v.proas = v.cost ? v.orderVal / v.cost : 0;    // real purchase ROAS
+  });
 
   // ---- DG device split ----
   var devBy = {};
@@ -243,6 +280,7 @@ function main() {
     videos: videos, audiences: audiences, surfaces: surfaces,
     landingPages: landingPages, conversions: conversions, devices: devices,
     ageCmp: ageCmp, genCmp: genCmp, thumbFolderUrl: thumbFolderUrl,
+    actions: { purchase: purchaseAction, atc: atcAction, checkout: checkoutAction },
     counts: { brand: nonDgIds.length, dg: dgIds.length }
   });
 
@@ -329,6 +367,64 @@ function compareBands_(order, brand, dg) {
 }
 
 // ---------------------------------------------------------------------------
+// Per-video down-funnel conversions
+// ---------------------------------------------------------------------------
+function pickByVol_(list, rawCat) {
+  var best = null;
+  list.forEach(function(a) {
+    if (a.rawCat.indexOf(rawCat) === -1) return;
+    if (!best || a.all > best.all) best = a;
+  });
+  return best ? best.action : '';
+}
+
+function pullVideoConversions_(dateClause, purchase, atc, checkout) {
+  var out = {};
+  function add(aid, nm, all, val) {
+    var o = out[aid] || (out[aid] = { orders: 0, orderVal: 0, atc: 0, checkout: 0 });
+    if (purchase && nm === purchase) { o.orders += all; o.orderVal += val; }
+    else if (atc && nm === atc) { o.atc += all; }
+    else if (checkout && nm === checkout) { o.checkout += all; }
+  }
+  // 1) asset-level segmentation by conversion action (preferred).
+  ["asset.type = 'YOUTUBE_VIDEO'", "ad_group_ad_asset_view.field_type = 'VIDEO'"]
+    .forEach(function(cond) {
+      if (Object.keys(out).length) return;
+      safeSearch_('SELECT asset.id, segments.conversion_action_name, ' +
+        'metrics.all_conversions, metrics.all_conversions_value FROM ' +
+        "ad_group_ad_asset_view WHERE campaign.advertising_channel_type = " +
+        "'DEMAND_GEN' AND " + cond + ' AND ' + dateClause).forEach(function(r) {
+          add(String(r.asset.id), r.segments.conversionActionName || '',
+              num_(r.metrics.allConversions), num_(r.metrics.allConversionsValue));
+        });
+    });
+  if (Object.keys(out).length) return out;
+
+  // 2) fallback: attribute ad-level conversions to videos through ads that
+  //    carry exactly one video (the only unambiguous mapping).
+  WARN.push('Per-video down-funnel via single-video ad attribution ' +
+    '(asset-level conversion segmentation returned nothing).');
+  var adToVideos = {};
+  safeSearch_('SELECT ad_group_ad.ad.id, asset.id FROM ad_group_ad_asset_view ' +
+    "WHERE campaign.advertising_channel_type = 'DEMAND_GEN' AND " +
+    "ad_group_ad_asset_view.field_type = 'VIDEO' AND " + dateClause)
+    .forEach(function(r) {
+      var adId = String(r.adGroupAd.ad.id);
+      (adToVideos[adId] = adToVideos[adId] || []).push(String(r.asset.id));
+    });
+  safeSearch_('SELECT ad_group_ad.ad.id, segments.conversion_action_name, ' +
+    'metrics.all_conversions, metrics.all_conversions_value FROM ad_group_ad ' +
+    "WHERE campaign.advertising_channel_type = 'DEMAND_GEN' AND " + dateClause)
+    .forEach(function(r) {
+      var adId = String(r.adGroupAd.ad.id), vids = adToVideos[adId];
+      if (!vids || vids.length !== 1) return;   // only unambiguous single-video ads
+      add(vids[0], r.segments.conversionActionName || '',
+          num_(r.metrics.allConversions), num_(r.metrics.allConversionsValue));
+    });
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Prompt builder
 // ---------------------------------------------------------------------------
 function buildPrompt_(d) {
@@ -367,10 +463,13 @@ function buildPrompt_(d) {
   p('3. **Executive summary** — one line of setup (spend, conversions, CPA), then ' +
     'three findings as large stat callouts tagged FIX / READ IT RIGHT / WORTH A LOOK.');
   p('4. **Video performance** — one-page scorecard, one row per video (with its ' +
-    'thumbnail): impressions, cost, conversions, view-through, CPA. Watch depth is ' +
-    'only available blended at the account level (see Totals: Google does not report ' +
-    'it per video asset), so footnote it, do not fabricate a per-video figure. Do ' +
-    'NOT make one slide per video.');
+    'thumbnail): spend, impressions, Add-to-Cart, Begin-checkout, ORDERS, order ' +
+    'value, CPO, ROAS, view-through. Make the story explicit: rank / highlight (a) ' +
+    'the creatives driving the most DOWN-FUNNEL PIPELINE (ATC + begin checkout) and ' +
+    '(b) the creatives driving the most ORDERS and the most efficient CPO / ROAS — ' +
+    'they are often not the same ads, and that contrast is the point. Watch depth ' +
+    'is only available blended at the account level (Totals), so footnote it; do ' +
+    'not fabricate a per-video figure. Do NOT make one slide per video.');
   p('5. **Three moves** — split multi-video ads so each video is measurable; seed ' +
     'audiences from watching behaviour and best organic/paid-social creative; turn ' +
     'on and judge the AI-modified cuts.');
@@ -420,14 +519,23 @@ function buildPrompt_(d) {
       money_(c.cost) + ', conv ' + dec_(c.conv) + ' @ ' + money_(safe_(c.cost, c.conv)) +
       ', VTC ' + dec_(c.vtc);
   });
-  section_(p, 'Videos (per creative)', d.videos.slice(0, N),
-    function(v) {
-      return '- ' + clip_(v.title, 50) + ' — spend ' + money_(v.cost) + ', impr ' +
-        int_(v.impr) + ', conv ' + dec_(v.conv) + ' @ ' + money_(safe_(v.cost, v.conv)) +
-        ', VTC ' + dec_(v.vtc) +
-        (v.thumbFile ? '  thumbnail: ' + v.thumbFile : '') +
-        (v.thumb ? '  (' + v.thumb + ')' : '');
-    });
+  var A = d.actions || {};
+  p('');
+  p('### Videos (per creative) — down-funnel pipeline and real purchase economics');
+  p('Order = purchase action "' + (A.purchase || '(none found)') + '" | ' +
+    'Add to Cart = "' + (A.atc || '(none)') + '" | Begin checkout = "' +
+    (A.checkout || '(none)') + '". ATC and Begin checkout are the down-funnel ' +
+    'pipeline; Orders / Order value / CPO / ROAS are the real sales economics ' +
+    '(CPO = spend / orders, ROAS = order value / spend).');
+  d.videos.slice(0, N).forEach(function(v) {
+    p('- ' + clip_(v.title, 46) + ' — spend ' + money_(v.cost) + ', impr ' +
+      int_(v.impr) + ', ATC ' + dec_(v.atc) + ', checkout ' + dec_(v.checkout) +
+      ', orders ' + dec_(v.orders) + ', order value ' + money_(v.orderVal) +
+      ', CPO ' + (v.orders ? money_(v.cpo) : 'no orders') +
+      ', ROAS ' + (v.cost ? dec_(v.proas) : '-') + ', VTC ' + dec_(v.vtc) +
+      (v.thumbFile ? '  thumbnail: ' + v.thumbFile : '') +
+      (v.thumb ? '  (' + v.thumb + ')' : ''));
+  });
   if (d.thumbFolderUrl) {
     p('');
     p('Video thumbnails were downloaded to this Drive folder: ' + d.thumbFolderUrl);
