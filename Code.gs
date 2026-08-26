@@ -726,7 +726,10 @@ function auditAccount_(customerId) {
   data.audienceValidation = buildDemoComparison_(range);
   backfillVideoQuartiles_(data.videos, data.ads);
   attachVideoConversions_(data.videos, data.ads, range.current);
-  data.funnelActions = attachVideoFunnel_(data.videos, data.conversionActions);
+  data.funnelActions = pickFunnelActions_(data.conversionActions);
+  attachVideoFunnel_(data.videos, data.funnelActions);
+  attachAdFunnel_(data.ads, range.current, data.funnelActions);
+  data.funnel = accountFunnel_(data.totals, data.conversionActions, data.funnelActions);
   data.totals = rollup_(data.campaigns);
   data.prior = range.prior ? rollup_(pullCampaigns_(range.prior)) : null;
   data.channelMix = rollupBy_(data.channels, 'channel');
@@ -2080,29 +2083,93 @@ function pickFunnelActions_(actions) {
   };
 }
 
+/** Sum a row's conversion-action breakdown into orders/value/atc/checkout. */
+function funnelOf_(convActions, sel) {
+  var out = { orders: 0, orderValue: 0, atc: 0, checkout: 0 };
+  (convActions || []).forEach(function(a) {
+    if (sel.purchase && a.action === sel.purchase) {
+      out.orders += a.allConversions || 0; out.orderValue += a.allConvValue || 0;
+    } else if (sel.atc && a.action === sel.atc) {
+      out.atc += a.allConversions || 0;
+    } else if (sel.checkout && a.action === sel.checkout) {
+      out.checkout += a.allConversions || 0;
+    }
+  });
+  return out;
+}
+
 /**
  * Per-video down-funnel economics from the conversion-action breakdown already
- * on each video: Add-to-Cart, Begin-checkout, real Orders, order value, CPO
- * (cost / orders) and purchase ROAS (order value / cost).
+ * on each video: Add-to-Cart, Begin-checkout, real Orders, order value (revenue),
+ * CPO (cost / orders) and purchase ROAS (order value / cost).
  */
-function attachVideoFunnel_(videos, accountConvActions) {
-  var sel = pickFunnelActions_(accountConvActions);
+function attachVideoFunnel_(videos, sel) {
   (videos || []).forEach(function(v) {
-    var orders = 0, orderValue = 0, atc = 0, checkout = 0;
-    (v.conversionActions || []).forEach(function(a) {
-      if (sel.purchase && a.action === sel.purchase) {
-        orders += a.allConversions || 0; orderValue += a.allConvValue || 0;
-      } else if (sel.atc && a.action === sel.atc) {
-        atc += a.allConversions || 0;
-      } else if (sel.checkout && a.action === sel.checkout) {
-        checkout += a.allConversions || 0;
-      }
-    });
-    v.orders = orders; v.orderValue = orderValue; v.atc = atc; v.checkout = checkout;
-    v.cpo = orders ? v.cost / orders : 0;
-    v.purchaseRoas = v.cost ? orderValue / v.cost : 0;
+    var f = funnelOf_(v.conversionActions, sel);
+    v.orders = f.orders; v.orderValue = f.orderValue; v.atc = f.atc;
+    v.checkout = f.checkout;
+    v.cpo = f.orders ? v.cost / f.orders : 0;
+    v.purchaseRoas = v.cost ? f.orderValue / v.cost : 0;
   });
-  return sel;
+}
+
+/**
+ * Same down-funnel economics per AD. Pulls the ad-level conversion-action
+ * breakdown directly (ads segment cleanly by conversion action) and attaches
+ * atc / checkout / orders / order value / CPO / purchase ROAS to each ad.
+ */
+function attachAdFunnel_(ads, dateClause, sel) {
+  if (!ads || !ads.length) return;
+  var byAd = {};
+  ads.forEach(function(a) {
+    a.orders = 0; a.orderValue = 0; a.atc = 0; a.checkout = 0;
+    a.cpo = 0; a.purchaseRoas = 0;
+    byAd[a.id] = a;
+  });
+  var rows = gaql_('Ad down-funnel', 'ad_group_ad',
+      ['ad_group_ad.ad.id', 'segments.conversion_action_name',
+       'metrics.all_conversions'],
+      [['metrics.all_conversions_value']],
+      DGEN + ' AND ' + dateClause);
+  rows.forEach(function(r) {
+    var ad = byAd[get_(r, 'adGroupAd.ad.id')];
+    if (!ad) return;
+    var nm = get_(r, 'segments.conversionActionName') || '';
+    var all = num_(get_(r, 'metrics.allConversions'));
+    var val = num_(get_(r, 'metrics.allConversionsValue'));
+    if (sel.purchase && nm === sel.purchase) { ad.orders += all; ad.orderValue += val; }
+    else if (sel.atc && nm === sel.atc) { ad.atc += all; }
+    else if (sel.checkout && nm === sel.checkout) { ad.checkout += all; }
+  });
+  ads.forEach(function(a) {
+    a.cpo = a.orders ? a.cost / a.orders : 0;
+    a.purchaseRoas = a.cost ? a.orderValue / a.cost : 0;
+  });
+}
+
+/**
+ * Whole-account full-funnel snapshot for the reverse-pyramid visual:
+ * impressions -> views -> add to cart -> begin checkout -> orders (+ revenue).
+ * ATC / checkout / orders come from the chosen conversion actions summed across
+ * the account; views and impressions from the rolled-up totals.
+ */
+function accountFunnel_(totals, accountConvActions, sel) {
+  var byAction = {};
+  (accountConvActions || []).forEach(function(a) {
+    var g = byAction[a.action] || (byAction[a.action] = { all: 0, val: 0 });
+    g.all += a.allConversions || 0; g.val += a.allConvValue || 0;
+  });
+  function all(name) { return name && byAction[name] ? byAction[name].all : 0; }
+  function val(name) { return name && byAction[name] ? byAction[name].val : 0; }
+  return {
+    impressions: (totals || {}).impressions || 0,
+    views: (totals || {}).videoViews || 0,
+    clicks: (totals || {}).clicks || 0,
+    atc: all(sel.atc),
+    checkout: all(sel.checkout),
+    orders: all(sel.purchase),
+    revenue: val(sel.purchase)
+  };
 }
 
 // ===========================================================================
@@ -3045,6 +3112,28 @@ function buildDeckPrompt_(data) {
         v.cost ? (Number(v.orderValue) / v.cost).toFixed(2) : '-'
       ].join(' | ') + ' |');
     });
+    push('');
+  }
+  var fn = data.funnel;
+  if (fn && (fn.impressions || fn.orders)) {
+    push('## Full-funnel impact (whole Demand Gen account).');
+    push('');
+    push('Render this as a REVERSE-PYRAMID FUNNEL on the executive summary (slide ' +
+      '3): each stage a centred bar narrower than the one above, labelled with the ' +
+      'number and, from Views down, its conversion rate from the stage above. It ' +
+      'visualises what a purchase-only lens misses: the channel drives real down-' +
+      'funnel pipeline (Add to Cart, Begin checkout) above the orders. Stages, ' +
+      'widest to narrowest:');
+    function frate(v, p) { return p ? ' (' + (v / p * 100).toFixed(1) + '% of prior)' : ''; }
+    push('- Impressions: ' + Math.round(fn.impressions));
+    push('- Views: ' + Math.round(fn.views) + frate(fn.views, fn.impressions));
+    push('- Add to cart: ' + (Number(fn.atc) || 0).toFixed(0) +
+        frate(fn.atc, fn.views));
+    push('- Begin checkout: ' + (Number(fn.checkout) || 0).toFixed(0) +
+        frate(fn.checkout, fn.atc));
+    push('- Orders: ' + (Number(fn.orders) || 0).toFixed(0) +
+        frate(fn.orders, fn.checkout) + ', worth ' + money0(fn.revenue) +
+        ' in purchase revenue.');
     push('');
   }
   var cmp = data.audienceValidation || null;
@@ -6832,6 +6921,7 @@ function savePayload_(data) {
       return v;
     }),
     funnelActions: data.funnelActions || null,
+    funnel: data.funnel || null,
     conversionActions: data.conversionActions || [],
     surfaceMix: data.surfaceMix || [],
     deviceMix: data.deviceMix || [],

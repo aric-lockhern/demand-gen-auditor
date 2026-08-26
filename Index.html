@@ -132,6 +132,17 @@
     display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
     gap: 10px; margin-bottom: 32px;
   }
+  .funnel-card { margin-bottom: 32px; }
+  .funnelviz { margin-top: 12px; }
+  .funnelviz .fn-row { display: flex; justify-content: center; margin: 7px 0; }
+  .funnelviz .fn-bar {
+    background: linear-gradient(135deg, #6D5AE6, #317AE0); color: #fff;
+    border-radius: 10px; padding: 12px 18px; display: flex; gap: 14px;
+    align-items: baseline; justify-content: space-between; min-width: 220px;
+    box-shadow: var(--lift);
+  }
+  .funnelviz .fn-label { font-weight: 650; font-size: 14px; }
+  .funnelviz .fn-val { font-size: 12.5px; opacity: .92; white-space: nowrap; }
   .kpi {
     background: var(--card); border: 1px solid var(--rule); border-radius: 12px;
     padding: 15px 17px; box-shadow: var(--lift);
@@ -942,6 +953,7 @@ document.getElementById('root').innerHTML =
       '<button data-mode="all">All conversions</button></div>' +
     '<span class="mode-hint" id="modeHint"></span></div>' +
   '<div class="kpis analyze-only" id="kpis"></div>' +
+  '<div class="card funnel-card analyze-only" id="funnelCard"></div>' +
   '<nav class="tabs" id="tabs"></nav>' +
   '<div class="acc-wrap" id="accordion"></div>' +
   '<div class="note" id="note"></div>' +
@@ -1443,6 +1455,40 @@ function drawMode() {
       : 'Only actions in the Conversions column that bidding optimises toward.';
 }
 
+// --- Full-funnel visual ---------------------------------------------------
+// A reverse pyramid for the whole account: impressions -> views -> add to cart
+// -> begin checkout -> orders (with revenue). Widths step down so it reads as a
+// funnel; the numbers carry the magnitude, and each stage shows its conversion
+// rate from the stage above.
+function drawFunnel() {
+  var el = document.getElementById('funnelCard');
+  if (!el) return;
+  var f = DATA.funnel;
+  if (!f || (!f.impressions && !f.orders)) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  var stages = [
+    { label: 'Impressions', v: f.impressions || 0 },
+    { label: 'Views', v: f.views || 0 },
+    { label: 'Add to cart', v: f.atc || 0 },
+    { label: 'Begin checkout', v: f.checkout || 0 },
+    { label: 'Orders', v: f.orders || 0, rev: f.revenue || 0 }
+  ].filter(function(s, i) { return i === 0 || i === 4 || s.v > 0; });
+  var widths = [100, 82, 64, 46, 28];
+  var body = stages.map(function(s, i) {
+    var prev = i > 0 ? stages[i - 1].v : 0;
+    var rate = (i > 0 && prev) ? '  ·  ' + pct0(s.v / prev) + ' of prior' : '';
+    var val = (s.rev != null)
+        ? int(s.v) + ' orders  ·  ' + money(s.rev) + ' revenue'
+        : int(s.v);
+    return '<div class="fn-row"><div class="fn-bar" style="width:' +
+      widths[Math.min(i, widths.length - 1)] + '%">' +
+      '<span class="fn-label">' + esc(s.label) + '</span>' +
+      '<span class="fn-val">' + val + rate + '</span></div></div>';
+  }).join('');
+  el.innerHTML = '<div class="section-label">Full-funnel impact ' +
+    '(Demand Gen, whole account)</div><div class="funnelviz">' + body + '</div>';
+}
+
 // --- KPIs -----------------------------------------------------------------
 function drawKpis() {
   var t = DATA.totals, p = DATA.prior, k = K();
@@ -1592,15 +1638,16 @@ function drawVideos(term) {
           '<div class="stat"><div class="k">View rate</div><div class="v">' +
             pct0(v.viewRate) + '</div></div>' +
         '</div>' +
-        ((v.orders || v.atc || v.checkout)
+        ((v.orders || v.orderValue || v.atc || v.checkout)
           ? '<div class="stats"><div class="stat"><div class="k">Orders</div>' +
             '<div class="v">' + dec(v.orders || 0) + '</div></div>' +
+            '<div class="stat"><div class="k">Revenue</div><div class="v">' +
+            money(v.orderValue || 0) + '</div></div>' +
             '<div class="stat"><div class="k">CPO</div><div class="v">' +
             (v.orders ? money(v.cpo) : '—') + '</div></div>' +
             '<div class="stat"><div class="k">Purch. ROAS</div><div class="v">' +
-            (v.cost ? (Number(v.purchaseRoas) || 0).toFixed(2) : '—') + '</div></div>' +
-            '<div class="stat"><div class="k">Add to cart</div><div class="v">' +
-            dec(v.atc || 0) + '</div></div></div>'
+            (v.cost ? (Number(v.purchaseRoas) || 0).toFixed(2) + 'x' : '—') +
+            '</div></div></div>'
           : '') +
         ((v.p25 || v.p100)
           ? '<div class="funnel"><div class="head"><span>How far people watch' +
@@ -1713,9 +1760,9 @@ function persistLabels() {
 }
 
 // --- tables ---------------------------------------------------------------
-function perfColumns() {
+function perfColumns(view) {
   var k = K();
-  return [
+  var cols = [
     { key: 'impressions', label: 'Impr.', fmt: int },
     { key: 'clicks', label: 'Clicks', fmt: int },
     { key: 'cost', label: 'Spend', fmt: money },
@@ -1731,6 +1778,20 @@ function perfColumns() {
     { key: 'viewRate', label: 'View rate', fmt: pct },
     { key: 'p100', label: 'Watched in full', fmt: pct }
   ];
+  // The Ads table also carries the real down-funnel purchase economics.
+  if (view === 'ads') {
+    cols = cols.concat([
+      { key: 'atc', label: 'Add to cart', fmt: dec },
+      { key: 'checkout', label: 'Checkout', fmt: dec },
+      { key: 'orders', label: 'Orders', fmt: dec },
+      { key: 'orderValue', label: 'Revenue', fmt: money },
+      { key: 'cpo', label: 'CPO',
+        fmt: function(v) { return v ? money(v) : '—'; } },
+      { key: 'purchaseRoas', label: 'Purch. ROAS',
+        fmt: function(v) { return dec(v) + 'x'; } }
+    ]);
+  }
+  return cols;
 }
 
 function adCell(row) {
@@ -3389,7 +3450,7 @@ function render() {
   }
 
   var view = VIEWS[ACTIVE];
-  var PERF = perfColumns();
+  var PERF = perfColumns(ACTIVE);
   var rows = view.rows().slice();
 
   if (CHANNEL_FILTER && ACTIVE === 'ads') {
@@ -3510,6 +3571,7 @@ drawReadout();
 drawSpectrum();
 drawMode();
 drawKpis();
+drawFunnel();
 buildPanels();
 buildNav();
 buildToolbar();
