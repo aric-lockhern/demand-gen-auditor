@@ -270,8 +270,10 @@
   .pill.gone { background: rgba(194,75,60,.12); color: var(--down); }
 
   /* ---- Client update one-pager ---- */
-  .cu-actions { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .cu-actions { display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+    flex-wrap: wrap; }
   .cu-warn { font-size: 12.5px; color: var(--down); }
+  .cu-note { font-size: 12px; color: var(--muted); }
   .cu-report {
     background: var(--card); border: 1px solid var(--rule); border-radius: 16px;
     box-shadow: var(--lift); padding: 30px 32px; max-width: 940px;
@@ -1700,8 +1702,8 @@ function drawFunnel() {
 function drawRealImpact() {
   var el = document.getElementById('impactCard');
   if (!el) return;
-  var r = DATA.realImpact;
-  if (!r || (!r.orders && !r.revenue)) { el.style.display = 'none'; return; }
+  var r = accountImpact();
+  if (!r.orders && !r.revenue) { el.style.display = 'none'; return; }
   el.style.display = '';
   function tile(label, value, sub) {
     return '<div class="impact-tile"><div class="il">' + esc(label) + '</div>' +
@@ -1711,7 +1713,7 @@ function drawRealImpact() {
   var roas = (Number(r.roas) || 0).toFixed(2) + 'x';
   var tiles =
     tile('Orders', int(r.orders),
-      r.viewThroughOrders ? int(r.viewThroughOrders) + ' via view-through' : '') +
+      r.vt ? int(r.vt) + ' via view-through' : '') +
     tile('Revenue', money(r.revenue), 'real purchases only') +
     tile('ROAS', '<span style="color:' + (r.roas >= 1 ? '#8FE3B0' : '#FFC9C9') +
       '">' + roas + '</span>', r.roas >= 1 ? 'net positive' : 'below breakeven') +
@@ -1721,6 +1723,44 @@ function drawRealImpact() {
     esc(r.purchaseAction || 'the purchase action') + ' — not the blended ' +
     'all-conversions column</span></div><div class="impact-grid">' + tiles +
     '</div>';
+}
+
+// Account-level purchase impact, reconciled to the per-ad numbers. The
+// account-level conversion-action rollup (DATA.realImpact / DATA.funnel) is
+// preferred when it is populated, but when it comes back empty — which happens
+// on some accounts — we fall back to summing the ad-level down-funnel that the
+// tables and cards are built from, so the headline always matches what is shown
+// right below it instead of reading zero.
+function accountImpact() {
+  var ri = DATA.realImpact || {};
+  var fn = DATA.funnel || {};
+  var sum = { spend: 0, orders: 0, vt: 0, revenue: 0, atc: 0, checkout: 0 };
+  (DATA.ads || []).forEach(function(a) {
+    sum.spend += Number(a.cost) || 0;
+    sum.orders += Number(a.orders) || 0;
+    sum.vt += Number(a.vtOrders) || 0;
+    sum.revenue += Number(a.orderValue) || 0;
+    sum.atc += Number(a.atc) || 0;
+    sum.checkout += Number(a.checkout) || 0;
+  });
+  var totalsCost = (DATA.totals && DATA.totals.cost) || 0;
+  var rollupOk = (Number(ri.orders) || 0) > 0 || (Number(ri.revenue) || 0) > 0;
+  var spend = Number(ri.spend) || totalsCost || sum.spend;
+  var orders = rollupOk ? Number(ri.orders) || 0 : sum.orders;
+  var vt = rollupOk ? Number(ri.viewThroughOrders) || 0 : sum.vt;
+  var revenue = rollupOk ? Number(ri.revenue) || 0 : sum.revenue;
+  var checkout = Number(fn.checkout) || sum.checkout;
+  var atc = Number(fn.atc) || sum.atc;
+  return {
+    spend: spend, orders: orders, vt: vt,
+    ordersDirect: Math.max(0, orders - vt),
+    revenue: revenue, checkout: checkout, atc: atc,
+    roas: spend ? revenue / spend : 0,
+    cpo: orders ? spend / orders : 0,
+    aov: orders ? revenue / orders : 0,
+    purchaseAction: ri.purchaseAction || '',
+    fromAds: !rollupOk && (sum.orders > 0 || sum.revenue > 0)
+  };
 }
 
 // --- Client update one-pager ----------------------------------------------
@@ -1738,6 +1778,8 @@ function cuAds() {
     o.orderValue = Number(a.orderValue) || 0;
     o.cost = Number(a.cost) || 0;
     o.vtOrders = Number(a.vtOrders) || 0;
+    o.atc = Number(a.atc) || 0;
+    o.checkout = Number(a.checkout) || 0;
     o.purchaseRoas = Number(a.purchaseRoas) || (o.cost ? o.orderValue / o.cost : 0);
     o.net = (o.orderValue) - (o.cost);
     return o;
@@ -1787,28 +1829,27 @@ function cuAdRow(a, kind) {
     '</div>' +
     '<div class="cu-ad-s">' +
       '<span>' + money(a.cost) + ' spend</span>' +
-      '<span>' + dec(a.orders) + ' purch · ' + money(a.orderValue) + '</span>' +
+      '<span>' + int(a.orders) + ' purch · ' + money(a.orderValue) + '</span>' +
       '<span class="cu-roas">' + roas + '</span>' +
     '</div></div>';
 }
 
 function drawClientUpdate() {
-  var ri = DATA.realImpact || {};
-  var fn = DATA.funnel || {};
   var ac = DATA.account || {};
   var ads = cuAds();
+  var imp = accountImpact();
 
-  var spend = Number(ri.spend) || (DATA.totals && DATA.totals.cost) || 0;
-  var ordersTotal = Number(ri.orders) || 0;         // incl. view-through
-  var vt = Number(ri.viewThroughOrders) || 0;
-  var ordersDirect = Math.max(0, ordersTotal - vt); // click / engaged only
-  var revenue = Number(ri.revenue) || 0;
-  var roas = Number(ri.roas) || (spend ? revenue / spend : 0);
-  var cpo = Number(ri.cpo) || (ordersTotal ? spend / ordersTotal : 0);
-  var aov = ordersTotal ? revenue / ordersTotal : 0;
-  var checkouts = Number(fn.checkout) || 0;
+  var spend = imp.spend;
+  var ordersTotal = imp.orders;         // incl. view-through
+  var vt = imp.vt;
+  var ordersDirect = imp.ordersDirect;  // click / engaged only
+  var revenue = imp.revenue;
+  var roas = imp.roas;
+  var cpo = imp.cpo;
+  var aov = imp.aov;
+  var checkouts = imp.checkout;
   var checkoutPipe = checkouts * aov;
-  var hasPurchase = !!(ri.purchaseAction);
+  var hasPurchase = !!imp.purchaseAction || ordersTotal > 0;
 
   // Best = ads that turned a profit, most profitable first. Worst = ads that
   // spent past the floor and lost money, biggest loss first.
@@ -1878,9 +1919,9 @@ function drawClientUpdate() {
       '">' + roas.toFixed(2) + 'x</span>';
   var band = '<div class="cu-band">' +
     kpi('Total spend', money(spend), '', true) +
-    kpi('Real purchases', dec(ordersDirect), 'click &amp; engaged', true) +
-    kpi('+ View-through', dec(ordersTotal),
-      '+' + dec(vt) + ' view-through', true) +
+    kpi('Real purchases', int(ordersDirect), 'click &amp; engaged', true) +
+    kpi('+ View-through', int(ordersTotal),
+      '+' + int(vt) + ' view-through', true) +
     kpi('Revenue', money(revenue), 'purchases only') +
     kpi('ROAS', roasHtml, roas >= 1 ? 'net positive' : 'below breakeven') +
     kpi('Cost / purchase', ordersTotal ? money(cpo) : '—', money(aov) + ' AOV') +
@@ -1889,12 +1930,12 @@ function drawClientUpdate() {
   // 5 begin-checkout pipeline
   var pipe = '<div class="cu-pipe">' +
     '<div class="cu-pipe-n"><div class="cu-k">Pipeline in Begin Checkout</div>' +
-      '<div class="cu-pipe-v">' + dec(checkouts) + ' begin-checkouts</div>' +
+      '<div class="cu-pipe-v">' + int(checkouts) + ' begin-checkouts</div>' +
       '<div class="cu-s">People who started checkout but have not yet ' +
       'purchased — the demand waiting just below the sale.</div></div>' +
     '<div class="cu-pipe-val"><div class="cu-k">Est. pipeline value</div>' +
       '<div class="cu-v">' + (checkoutPipe ? money(checkoutPipe) : '—') + '</div>' +
-      '<div class="cu-s">' + dec(checkouts) + ' × ' + money(aov) + ' AOV</div>' +
+      '<div class="cu-s">' + int(checkouts) + ' × ' + money(aov) + ' AOV</div>' +
     '</div></div>';
 
   // 6 best / worst
@@ -1920,7 +1961,7 @@ function drawClientUpdate() {
   var audRows = audiences.length ? audiences.map(function(g) {
     return '<div class="cu-aud"><span class="cu-aud-n">' + esc(g.name) +
       '</span><span class="cu-aud-v">' + money(g.revenue) + ' · ' +
-      dec(g.orders) + ' purch</span></div>';
+      int(g.orders) + ' purch</span></div>';
   }).join('') : '<div class="cu-none">Audience is read from ad-group names; ' +
     'none of the winners carry one.</div>';
 
@@ -1947,6 +1988,8 @@ function drawClientUpdate() {
     '<button class="pb-btn" id="cuPrint">🖨 Print / Save as PDF</button>' +
     (hasPurchase ? '' : '<span class="cu-warn">No purchase action set in ' +
       'Settings — purchase numbers will read 0 until you pick one.</span>') +
+    (imp.fromAds ? '<span class="cu-note">Figures totalled from the ad ' +
+      'breakdown. Re-run Refresh to pull the account-level rollup.</span>' : '') +
   '</div>';
 
   return '<div class="scroll">' + toolbar +
