@@ -296,31 +296,54 @@
   }
   .disc-btn:hover { background: var(--wash); }
   .acct-panel {
-    margin: 12px 0 4px; border: 1px solid var(--rule); border-radius: 12px;
-    background: var(--card); box-shadow: var(--lift); max-width: 560px;
-    overflow: hidden;
+    margin: 10px 0 4px; border: 1px solid var(--rule); border-radius: 10px;
+    background: var(--card); box-shadow: var(--lift); max-width: 340px;
+    max-height: 300px; overflow-y: auto;
   }
   .disc-head { display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 14px; font-size: 12px; font-weight: 700; color: var(--muted);
-    text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--rule); }
+    padding: 7px 12px; font-size: 10.5px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .03em;
+    border-bottom: 1px solid var(--rule); position: sticky; top: 0;
+    background: var(--card); }
   .disc-mini { border: none; background: none; color: var(--accent);
-    font-size: 12px; font-weight: 600; cursor: pointer; text-transform: none;
+    font-size: 11px; font-weight: 600; cursor: pointer; text-transform: none;
     letter-spacing: 0; }
   .disc-row { display: flex; align-items: center; justify-content: space-between;
-    gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+    gap: 10px; padding: 7px 12px; border-bottom: 1px solid var(--rule); }
   .disc-row:last-child { border-bottom: none; }
-  .disc-nm { font-size: 14px; font-weight: 600; color: var(--ink); min-width: 0; }
-  .disc-id { font-size: 11.5px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+  .disc-nm { font-size: 13px; font-weight: 600; color: var(--ink); min-width: 0; }
+  .disc-id { font-size: 10.5px; font-weight: 400; color: var(--muted); margin-top: 1px; }
   .disc-cur { font-size: 10.5px; font-weight: 700; color: var(--up);
     background: rgba(27,127,90,.12); padding: 1px 6px; border-radius: 8px; }
-  .disc-open { color: var(--accent); font-weight: 700; font-size: 13px;
+  .disc-open { color: var(--accent); font-weight: 700; font-size: 12px;
     text-decoration: none; white-space: nowrap; }
   .disc-open:hover { text-decoration: underline; }
   .disc-audit { border: 1px solid var(--ink); background: var(--ink); color: #fff;
-    border-radius: 16px; padding: 5px 13px; font-size: 12.5px; font-weight: 600;
-    cursor: pointer; font-family: var(--sans); }
+    border-radius: 14px; padding: 4px 11px; font-size: 11.5px; font-weight: 600;
+    cursor: pointer; font-family: var(--sans); white-space: nowrap; }
   .disc-audit:disabled { opacity: .5; cursor: default; }
-  .disc-empty { padding: 16px; font-size: 13px; color: var(--muted); }
+  .disc-empty { padding: 14px; font-size: 12.5px; color: var(--muted); }
+
+  /* Report share mode: only the clean client update, centered. */
+  .cu-report { margin: 0 auto; }
+  body.report-only .wrap { max-width: 1000px; padding-top: 20px; }
+  body.report-only header,
+  body.report-only .analyze-only,
+  body.report-only .tabs,
+  body.report-only .note,
+  body.report-only .acc-head,
+  body.report-only .cu-window,
+  body.report-only #cuPrint,
+  body.report-only .build-tools,
+  body.report-only .wizard,
+  body.report-only .cu-note,
+  body.report-only .cu-warn { display: none !important; }
+  body.report-only .acc-wrap { margin-top: 0; }
+  body.report-only .acc, body.report-only .acc-body,
+  body.report-only .panel { border: none; background: none; box-shadow: none;
+    padding: 0; margin: 0; }
+  body.report-only .cu-actions { margin: 0 0 4px; }
+  body.report-only .cu-report { box-shadow: var(--lift); }
   .cu-report {
     background: var(--card); border: 1px solid var(--rule); border-radius: 16px;
     box-shadow: var(--lift); padding: 30px 32px; max-width: 940px;
@@ -352,6 +375,19 @@
     letter-spacing: -.01em; }
   .cu-s { font-size: 11px; color: var(--muted); margin-top: 3px; }
   @media (max-width: 760px) { .cu-band { grid-template-columns: repeat(2, 1fr); } }
+
+  .cu-overview { margin: 20px 0 4px; padding: 16px 18px; border-radius: 12px;
+    background: var(--wash); border: 1px solid var(--rule); }
+  .cu-overview .cu-h { margin-bottom: 8px; }
+  .cu-ov { margin: 0; padding-left: 20px; }
+  .cu-ov li { font-size: 14px; line-height: 1.6; color: var(--ink);
+    margin-bottom: 5px; }
+  .cu-ov li:last-child { margin-bottom: 0; }
+  .cu-mini { border: 1px solid var(--rule); background: var(--card);
+    color: var(--muted); border-radius: 14px; padding: 3px 10px; font-size: 11.5px;
+    font-weight: 600; cursor: pointer; font-family: var(--sans); }
+  .cu-mini:hover { color: var(--ink); }
+  .cu-mini:disabled { opacity: .5; cursor: default; }
 
   .cu-pipe {
     display: flex; gap: 16px; align-items: stretch; margin-bottom: 8px;
@@ -441,6 +477,7 @@
     body.printing-cu #cuReport .cu-plan-t { display: none; }
     body.printing-cu #cuReport .cu-plan-print { display: block; }
     body.printing-cu #cuReport .cu-plan-h { display: none; }
+    body.printing-cu #cuReport .cu-mini { display: none; }
     body.printing-cu .cu-kpi.big,
     body.printing-cu .cu-sc-win td { -webkit-print-color-adjust: exact;
       print-color-adjust: exact; }
@@ -1109,6 +1146,7 @@ var ACCOUNTS = <?!= accounts ? accounts : '[]' ?>;
 var CURRENT_ACCOUNT = <?!= current ? current : '""' ?>;
 var BASE_URL = <?!= baseUrl ? baseUrl : '""' ?>;
 var BRAND = <?!= brand ? brand : '{}' ?>;
+var REPORT_MODE = <?!= reportMode ? reportMode : 'false' ?>;
 // Manual setting overrides, keyed "<campaignId>|<field>" (asset toggles use
 // "<campaignId>|asset|<TYPE>"). Injected fresh each load, edited in the Settings
 // view, saved via google.script.run.saveOverride. Overrides win over the API.
@@ -2150,6 +2188,22 @@ function drawClientUpdate() {
     '<div class="cu-by">Prepared by<br><b>Lockhern Digital</b></div>' +
   '</div>';
 
+  // AI overview — the narrative summary of the window.
+  var ovBullets = (DATA.aiOverview && DATA.aiOverview.bullets) || [];
+  var overviewBlock = (ovBullets.length || !REPORT_MODE)
+    ? '<div class="cu-overview" id="cuOverview"><div class="cu-h">Overview' +
+        (REPORT_MODE ? '' : '<button class="cu-mini" id="cuRegen">↻ Regenerate' +
+          '</button>') + '</div>' +
+        (ovBullets.length
+          ? '<ul class="cu-ov" id="cuOvList">' + ovBullets.map(function(b) {
+              return '<li>' + esc(String(b)).replace(/\*\*(.+?)\*\*/g,
+                '<b>$1</b>') + '</li>'; }).join('') + '</ul>'
+          : '<div class="cu-none" id="cuOvList">No AI overview yet' +
+            (REPORT_MODE ? '.' : ' — click Regenerate (needs an Anthropic API ' +
+            'key in Script Properties).') + '</div>') +
+      '</div>'
+    : '';
+
   // 1–4 headline band
   var roasHtml = '<span style="color:' + (roas >= 1 ? 'var(--up)' : 'var(--down)') +
       '">' + roas.toFixed(2) + 'x</span>';
@@ -2254,8 +2308,9 @@ function drawClientUpdate() {
       'yours to send.</div>' +
   '</div>';
 
-  var toolbar = '<div class="cu-actions">' +
+  var toolbar = REPORT_MODE ? '' : '<div class="cu-actions">' +
     '<button class="pb-btn" id="cuPrint">🖨 Print / Save as PDF</button>' +
+    '<button class="pb-btn ghost" id="cuShare">🔗 Share report link</button>' +
     '<span class="cu-window">Window ' +
       '<select id="cuDays">' +
         [7, 14, 30, 60, 90, 180, 365].map(function(d) {
@@ -2279,6 +2334,7 @@ function drawClientUpdate() {
 
   return '<div class="scroll">' + toolbar +
     '<div class="cu-report" id="cuReport">' + head + band + pipe +
+    overviewBlock +
     '<div class="cu-sech">Best &amp; worst creative</div>' + perf +
     scenario +
     '<div class="cu-sech">What is working</div>' + seg +
@@ -2369,6 +2425,50 @@ function bindClientUpdate() {
           state.style.color = 'var(--down)'; }
       })
       .repullAccountDays(CURRENT_ACCOUNT, days, includePaused);
+  };
+
+  var share = document.getElementById('cuShare');
+  if (share) share.onclick = function() {
+    var base = (typeof BASE_URL !== 'undefined' && BASE_URL) ? BASE_URL : '';
+    if (!base) { toast('No web-app URL available.'); return; }
+    var url = base + (base.indexOf('?') === -1 ? '?' : '&') + 'account=' +
+      encodeURIComponent(CURRENT_ACCOUNT) + '&report=1';
+    function done() { toast('Report link copied — anyone with it sees this ' +
+      'report, read-only.'); }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(done, function() {
+          window.prompt('Copy this report link:', url);
+        });
+      } else {
+        window.prompt('Copy this report link:', url);
+      }
+    } catch (e) { window.prompt('Copy this report link:', url); }
+  };
+
+  var regen = document.getElementById('cuRegen');
+  if (regen) regen.onclick = function() {
+    var list = document.getElementById('cuOvList');
+    regen.disabled = true; regen.textContent = 'Writing…';
+    if (list) list.innerHTML = '<li>Generating…</li>';
+    google.script.run
+      .withSuccessHandler(function(res) {
+        regen.disabled = false; regen.textContent = '↻ Regenerate';
+        if (res && res.ok) {
+          DATA.aiOverview = { bullets: res.bullets || [] };
+          drawReadout();
+          render();  // re-render the report with the fresh overview
+        } else {
+          if (list) list.outerHTML = '<div class="cu-none" id="cuOvList">' +
+            esc((res && res.error) || 'Could not generate.') + '</div>';
+        }
+      })
+      .withFailureHandler(function(e) {
+        regen.disabled = false; regen.textContent = '↻ Regenerate';
+        if (list) list.outerHTML = '<div class="cu-none" id="cuOvList">' +
+          esc('Failed: ' + (e && e.message || e)) + '</div>';
+      })
+      .regenerateOverview(CURRENT_ACCOUNT);
   };
 }
 
@@ -4786,6 +4886,7 @@ document.getElementById('root').setAttribute('data-mode', APP_MODE);
       .getAiAnalysis(CURRENT_ACCOUNT);
   }
 })();
+if (REPORT_MODE) { ACTIVE = 'clientUpdate'; document.body.classList.add('report-only'); }
 buildModeBar();
 initWizardAccordion();
 drawReadout();

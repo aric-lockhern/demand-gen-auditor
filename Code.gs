@@ -592,6 +592,11 @@ function doGet(e) {
       : (available.length ? available[0].id : '');
 
   var template = HtmlService.createTemplateFromFile('Index');
+  // Report-only share mode: ?report=1 renders just the clean client update, no
+  // dashboard chrome, for handing to a client.
+  var reportParam = e && e.parameter && (e.parameter.report || e.parameter.view);
+  template.reportMode = (reportParam === '1' || reportParam === 'report' ||
+      reportParam === 'client') ? 'true' : 'false';
   // Escape "<" so ad copy containing markup cannot close the script tag.
   template.payload = ((chosen && readPayload_(chosen)) || 'null')
       .replace(/</g, '\\u003c');
@@ -846,6 +851,38 @@ function generateOverview_(data) {
   };
   var res = callClaude_(system, summary, schema);
   return { bullets: (res && res.bullets) || [] };
+}
+
+/**
+ * Regenerate the AI overview for an already-pulled account on demand, and store
+ * it back into the cached payload. Client-callable. Surfaces the reason on
+ * failure (e.g. missing API key) so the dashboard can show it.
+ */
+function regenerateOverview(accountId) {
+  try {
+    ensureAccountContext_(accountId);
+    if (!CONFIG.ANTHROPIC_API_KEY) {
+      return { ok: false, error: 'No Anthropic API key. Add ANTHROPIC_API_KEY ' +
+        'under Project Settings > Script Properties, then try again.' };
+    }
+    var raw = readPayload_(digits_(accountId));
+    if (!raw) return { ok: false, error: 'No cached pull for this account yet.' };
+    var data = JSON.parse(raw);
+    // The overview summary reads LAST_N_DAYS off CONFIG; align it to the pull.
+    var d = null;
+    if (data.account && data.account.start && data.account.end) {
+      d = Math.round((new Date(data.account.end) - new Date(data.account.start)) /
+          86400000) + 1;
+    }
+    if (d) CONFIG.LAST_N_DAYS = d;
+    if (data.account) CONFIG.INCLUDE_PAUSED = data.account.includePaused !== false;
+    var overview = generateOverview_(data);
+    data.aiOverview = overview;
+    savePayload_(data);
+    return { ok: true, bullets: (overview && overview.bullets) || [] };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e) };
+  }
 }
 
 /** Which accounts already have a cached payload, for the dashboard picker. */
