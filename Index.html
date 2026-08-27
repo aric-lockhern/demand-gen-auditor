@@ -284,6 +284,43 @@
   .pb-btn.ghost { background: var(--card); color: var(--ink);
     border-color: var(--rule); font-weight: 600; }
   .pb-btn.ghost:hover { background: var(--wash); opacity: 1; }
+  .cu-check { display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12.5px; color: var(--muted); cursor: pointer; }
+  .cu-check input { width: 14px; height: 14px; }
+
+  /* Account discovery */
+  .disc-btn {
+    margin-left: 10px; border: 1px solid var(--rule); background: var(--card);
+    color: var(--ink); border-radius: 8px; padding: 6px 12px; font-size: 13px;
+    font-weight: 600; cursor: pointer; font-family: var(--sans);
+  }
+  .disc-btn:hover { background: var(--wash); }
+  .acct-panel {
+    margin: 12px 0 4px; border: 1px solid var(--rule); border-radius: 12px;
+    background: var(--card); box-shadow: var(--lift); max-width: 560px;
+    overflow: hidden;
+  }
+  .disc-head { display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; font-size: 12px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--rule); }
+  .disc-mini { border: none; background: none; color: var(--accent);
+    font-size: 12px; font-weight: 600; cursor: pointer; text-transform: none;
+    letter-spacing: 0; }
+  .disc-row { display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+  .disc-row:last-child { border-bottom: none; }
+  .disc-nm { font-size: 14px; font-weight: 600; color: var(--ink); min-width: 0; }
+  .disc-id { font-size: 11.5px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+  .disc-cur { font-size: 10.5px; font-weight: 700; color: var(--up);
+    background: rgba(27,127,90,.12); padding: 1px 6px; border-radius: 8px; }
+  .disc-open { color: var(--accent); font-weight: 700; font-size: 13px;
+    text-decoration: none; white-space: nowrap; }
+  .disc-open:hover { text-decoration: underline; }
+  .disc-audit { border: 1px solid var(--ink); background: var(--ink); color: #fff;
+    border-radius: 16px; padding: 5px 13px; font-size: 12.5px; font-weight: 600;
+    cursor: pointer; font-family: var(--sans); }
+  .disc-audit:disabled { opacity: .5; cursor: default; }
+  .disc-empty { padding: 16px; font-size: 13px; color: var(--muted); }
   .cu-report {
     background: var(--card); border: 1px solid var(--rule); border-radius: 16px;
     box-shadow: var(--lift); padding: 30px 32px; max-width: 940px;
@@ -1170,7 +1207,9 @@ document.getElementById('root').innerHTML =
                 esc(a.name) + '</option>';
           }).join('') + '</select>'
         : '') +
+      '<button id="discoverBtn" class="disc-btn">Accounts ▾</button>' +
     '</div>' +
+    '<div id="acctPanel" class="acct-panel" style="display:none"></div>' +
     '<div class="topai">' +
       '<button class="aibtn" id="topAiBtn">✨ Analyze with AI</button>' +
       '<span class="topai-sub">One click. Claude reads the whole account and ' +
@@ -1182,7 +1221,8 @@ document.getElementById('root').innerHTML =
     '<div class="modeintro" id="modeIntro"></div>' +
     '<div class="window" id="window"></div>' +
     '</header>' +
-  '<div class="card readout analyze-only"><div class="section-label">What the numbers say</div>' +
+  '<div class="card readout analyze-only"><div class="section-label" ' +
+    'id="readoutLabel">Overview</div>' +
     '<ul id="readout"></ul></div>' +
   '<section class="spectrum analyze-only"><div class="section-label">Where the budget went</div>' +
     '<div class="spectrum-bar" id="spectrum"></div>' +
@@ -1193,7 +1233,6 @@ document.getElementById('root').innerHTML =
     '<span class="mode-hint" id="modeHint"></span></div>' +
   '<div class="impact-card analyze-only" id="impactCard"></div>' +
   '<div class="kpis analyze-only" id="kpis"></div>' +
-  '<div class="card funnel-card analyze-only" id="funnelCard"></div>' +
   '<nav class="tabs" id="tabs"></nav>' +
   '<div class="acc-wrap" id="accordion"></div>' +
   '<div class="note" id="note"></div>' +
@@ -1279,6 +1318,108 @@ if (ACCOUNTS.length > 1) {
     if (BASE_URL) { (window.top || window).location.href = url; }
   };
 }
+
+// --- account discovery ----------------------------------------------------
+// Find every account the tool can audit (via the manager), list them, and let
+// the user open a pulled one or audit a new one — no editing the Settings tab.
+var DISCOVERED = null;
+(function() {
+  var btn = document.getElementById('discoverBtn');
+  var panel = document.getElementById('acctPanel');
+  if (!btn || !panel) return;
+  var cached = {};
+  ACCOUNTS.forEach(function(a) { cached[String(a.id)] = true; });
+
+  function acctUrl(id) {
+    return (BASE_URL || '') + (BASE_URL && BASE_URL.indexOf('?') === -1 ? '?' : '&') +
+      'account=' + encodeURIComponent(id);
+  }
+
+  function rowHtml(a) {
+    var isCached = cached[String(a.id)];
+    var right = isCached
+      ? '<a class="disc-open" target="_top" href="' + acctUrl(a.id) + '">Open →</a>'
+      : '<button class="disc-audit" data-id="' + esc(String(a.id)) + '" ' +
+        'data-name="' + esc(a.name) + '">Audit</button>';
+    return '<div class="disc-row" data-id="' + esc(String(a.id)) + '">' +
+      '<div class="disc-nm">' + esc(a.name) +
+        (a.id === CURRENT_ACCOUNT ? ' <span class="disc-cur">current</span>' : '') +
+        '<div class="disc-id">' + esc(a.id) +
+          (a.currency ? ' · ' + esc(a.currency) : '') + '</div></div>' +
+      '<div class="disc-act">' + right + '</div></div>';
+  }
+
+  function renderList(list) {
+    if (!list || !list.length) {
+      panel.innerHTML = '<div class="disc-empty">No accounts found. Check the ' +
+        'Manager (MCC) ID in Settings and your access.</div>';
+      return;
+    }
+    panel.innerHTML =
+      '<div class="disc-head">' + list.length + ' account' +
+        (list.length === 1 ? '' : 's') + ' the tool can audit ' +
+        '<button id="discRefresh" class="disc-mini">↻ Refresh list</button></div>' +
+      list.map(rowHtml).join('');
+    var rr = document.getElementById('discRefresh');
+    if (rr) rr.onclick = function() { load(true); };
+    var auds = panel.querySelectorAll('.disc-audit');
+    for (var i = 0; i < auds.length; i++) auds[i].onclick = auditOne;
+  }
+
+  function auditOne() {
+    var id = this.getAttribute('data-id');
+    var name = this.getAttribute('data-name');
+    var daysSel = document.getElementById('cuDays');
+    var days = Number(daysSel && daysSel.value) || (DATA.account &&
+      windowDays(DATA.account)) || 90;
+    var pausedBox = document.getElementById('cuPaused');
+    var incl = pausedBox ? !!pausedBox.checked :
+      (DATA.account ? DATA.account.includePaused !== false : true);
+    if (!window.confirm('Audit "' + name + '" over the last ' + days + ' days? ' +
+        'This runs the live pull and can take a minute.')) return;
+    var btnEl = this;
+    btnEl.disabled = true; btnEl.textContent = 'Pulling…';
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (res && res.ok) {
+          var row = panel.querySelector('.disc-row[data-id="' + id + '"] .disc-act');
+          if (row) row.innerHTML = '<a class="disc-open" href="' + acctUrl(id) +
+            '">Open →</a>';
+        } else {
+          btnEl.disabled = false; btnEl.textContent = 'Retry';
+          toast('Audit failed: ' + ((res && res.error) || 'unknown'));
+        }
+      })
+      .withFailureHandler(function(e) {
+        btnEl.disabled = false; btnEl.textContent = 'Retry';
+        toast('Audit failed: ' + (e && e.message || e));
+      })
+      .repullAccountDays(id, days, incl);
+  }
+
+  function load(force) {
+    if (DISCOVERED && !force) { renderList(DISCOVERED); return; }
+    panel.innerHTML = '<div class="disc-empty">Finding accounts…</div>';
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (res && res.ok) { DISCOVERED = res.accounts || []; renderList(DISCOVERED); }
+        else { panel.innerHTML = '<div class="disc-empty">' +
+          esc((res && res.error) || 'Could not list accounts.') + '</div>'; }
+      })
+      .withFailureHandler(function(e) {
+        panel.innerHTML = '<div class="disc-empty">Could not list accounts: ' +
+          esc(String(e && e.message || e)) + '</div>';
+      })
+      .discoverAccounts();
+  }
+
+  btn.onclick = function() {
+    var open = panel.style.display !== 'none';
+    if (open) { panel.style.display = 'none'; return; }
+    panel.style.display = 'block';
+    load(false);
+  };
+})();
 
 document.getElementById('window').innerHTML =
     'Account <b>' + esc(DATA.account.id) + '</b> &nbsp;·&nbsp; <b>' +
@@ -1607,17 +1748,33 @@ document.getElementById('wPromptBtn').onclick = function() {
 
 // --- plain-language read-out ---------------------------------------------
 function drawReadout() {
+  var el = document.getElementById('readout');
+  if (!el) return;
+  var label = document.getElementById('readoutLabel');
+
+  // Prefer the AI overview (4–5 bullets, scoped to the window). It is written at
+  // pull time and shipped in the payload. Fall back to the deterministic
+  // read-out when it is absent (no API key, or an older cached pull).
+  var ai = DATA.aiOverview && DATA.aiOverview.bullets;
+  if (ai && ai.length) {
+    if (label) label.textContent = 'Overview';
+    el.innerHTML = ai.map(function(b) {
+      return '<li>' + esc(String(b)).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>') +
+          '</li>';
+    }).join('');
+    return;
+  }
+
   // Generated on the server so the dashboard and the slide deck cannot drift.
   var source = DATA.readout || {};
   var lines = (MODE === 'all' ? source.all : source.conversions) || [];
-
-  document.getElementById('readout').innerHTML = lines.length
+  if (label) label.textContent = 'What the numbers say';
+  el.innerHTML = lines.length
       ? lines.map(function(line) {
-          // ** wraps the figures: the deck strips them, we embolden them.
           return '<li>' + esc(line).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>') +
               '</li>';
         }).join('')
-      : '<li>No read-out in this cached pull. Run refresh to generate it.</li>';
+      : '<li>Run a pull to generate the overview.</li>';
 }
 
 // --- channel spectrum -----------------------------------------------------
@@ -1866,6 +2023,23 @@ function cuAdRow(a, kind) {
     '</div></div>';
 }
 
+// Swap in a freshly-pulled payload and re-render every data-driven surface in
+// place, so a re-pull updates the page without a reload.
+function applyPayload(newData) {
+  if (!newData) return;
+  DATA = newData;
+  NOTES = (function() {
+    var base = (DATA && DATA.notes) || {}, out = {};
+    for (var k in base) out[k] = base[k];
+    for (var f in FRESH_NOTES) out[f] = FRESH_NOTES[f];
+    return out;
+  })();
+  try {
+    drawReadout(); drawSpectrum(); drawKpis(); drawRealImpact();
+    buildNav(); buildToolbar(); render();
+  } catch (e) {}
+}
+
 function windowDays(ac) {
   if (!ac || !ac.start || !ac.end) return 0;
   var s = new Date(ac.start + 'T00:00:00'), e = new Date(ac.end + 'T00:00:00');
@@ -2091,6 +2265,9 @@ function drawClientUpdate() {
         (([7,14,30,60,90,180,365].indexOf(days) === -1 && days)
           ? '<option value="' + days + '" selected>' + days + ' days</option>' : '') +
       '</select>' +
+      '<label class="cu-check"><input type="checkbox" id="cuPaused"' +
+        ((ac.includePaused === false) ? '' : ' checked') +
+        '> incl. paused</label>' +
       '<button class="pb-btn ghost" id="cuRepull">Apply &amp; re-pull</button>' +
       '<span id="cuRepullState" class="cu-note"></span>' +
     '</span>' +
@@ -2139,12 +2316,15 @@ function bindClientUpdate() {
   var repull = document.getElementById('cuRepull');
   if (repull) repull.onclick = function() {
     var sel = document.getElementById('cuDays');
+    var pausedBox = document.getElementById('cuPaused');
     var state = document.getElementById('cuRepullState');
     var days = Number(sel && sel.value) || 0;
+    var includePaused = pausedBox ? !!pausedBox.checked : true;
     if (!days) return;
     if (!window.confirm('Re-pull ' + (DATA.account && DATA.account.name || 'this ' +
-        'account') + ' over the last ' + days + ' days? This runs the live ' +
-        'queries again and can take a minute.')) return;
+        'account') + ' over the last ' + days + ' days (' + (includePaused
+        ? 'enabled + paused' : 'enabled only') + ')? This runs the live queries ' +
+        'again and can take a minute.')) return;
     repull.disabled = true;
     repull.textContent = 'Pulling…';
     if (state) { state.textContent = 'Running the ' + days + '-day pull…';
@@ -2152,17 +2332,29 @@ function bindClientUpdate() {
     google.script.run
       .withSuccessHandler(function(res) {
         if (res && res.ok) {
-          if (state) { state.textContent = 'Done (' + res.start + ' – ' +
-            res.end + '). Reloading…'; state.style.color = 'var(--up)'; }
-          var base = (typeof BASE_URL !== 'undefined' && BASE_URL) ? BASE_URL : '';
-          var url = base
-            ? base + (base.indexOf('?') === -1 ? '?' : '&') + 'account=' +
-              encodeURIComponent(CURRENT_ACCOUNT)
-            : '';
-          setTimeout(function() {
-            if (url) { (window.top || window).location.href = url; }
-            else { location.reload(); }
-          }, 700);
+          if (state) { state.textContent = 'Loading fresh data…';
+            state.style.color = 'var(--muted)'; }
+          // Re-render in place from the freshly-saved payload — the sandboxed
+          // iframe cannot reliably reload its own top window.
+          google.script.run
+            .withSuccessHandler(function(p) {
+              repull.disabled = false;
+              repull.textContent = 'Apply & re-pull';
+              if (p) {
+                applyPayload(p);
+                toast('Updated: ' + res.start + ' – ' + res.end);
+              } else if (state) {
+                state.textContent = 'Pulled, but could not reload — refresh the ' +
+                  'page.'; state.style.color = 'var(--down)';
+              }
+            })
+            .withFailureHandler(function() {
+              repull.disabled = false;
+              repull.textContent = 'Apply & re-pull';
+              if (state) { state.textContent = 'Pulled — refresh the page to see ' +
+                'it.'; state.style.color = 'var(--muted)'; }
+            })
+            .getPayload(CURRENT_ACCOUNT);
         } else {
           repull.disabled = false;
           repull.textContent = 'Apply & re-pull';
@@ -2176,7 +2368,7 @@ function bindClientUpdate() {
         if (state) { state.textContent = 'Pull failed: ' + (e && e.message || e);
           state.style.color = 'var(--down)'; }
       })
-      .repullAccountDays(CURRENT_ACCOUNT, days);
+      .repullAccountDays(CURRENT_ACCOUNT, days, includePaused);
   };
 }
 
@@ -3685,7 +3877,7 @@ var VIEWS = {
       search: function(r) { return r.date; } } }
 };
 
-var ACTIVE = 'videos';
+var ACTIVE = 'clientUpdate';
 var SORT = { key: 'cost', asc: false };
 
 // The dashboard has three primary modes, chosen with the top tab bar:
@@ -4601,7 +4793,6 @@ drawSpectrum();
 drawMode();
 drawKpis();
 drawRealImpact();
-drawFunnel();
 buildPanels();
 buildNav();
 buildToolbar();

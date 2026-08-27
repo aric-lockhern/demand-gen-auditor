@@ -68,6 +68,10 @@ var CONFIG = {
   LAST_N_DAYS: 90,
   COMPARE_PRIOR_PERIOD: true,
 
+  // Audit enabled + paused campaigns (true) or only enabled ones (false).
+  // Toggled from the dashboard; persisted as "Include paused campaigns".
+  INCLUDE_PAUSED: true,
+
   // Rows kept per table in the dashboard. The Sheet always gets everything.
   TOP_N: 150,
 
@@ -545,6 +549,9 @@ function loadSettings_() {
           .filter(function(id) { return id.length >= 8; });
     }
     if (map['days to report']) CONFIG.LAST_N_DAYS = Number(map['days to report']);
+    if (map.hasOwnProperty('include paused campaigns')) {
+      CONFIG.INCLUDE_PAUSED = truthy_(map['include paused campaigns'], true);
+    }
     if (map['rows per table']) CONFIG.TOP_N = Number(map['rows per table']);
     if (map['google ads api version']) {
       CONFIG.API_VERSION = String(map['google ads api version']).trim();
@@ -698,6 +705,7 @@ function auditAccount_(customerId) {
       end: range.end,
       priorStart: range.priorStart,
       priorEnd: range.priorEnd,
+      includePaused: CONFIG.INCLUDE_PAUSED,
       generated: Utilities.formatDate(
           new Date(), customer.timeZone, 'MMM d, yyyy h:mm a')
     },
@@ -762,9 +770,82 @@ function auditAccount_(customerId) {
   };
   data.runLog = RUN_LOG.slice();
   data.brief = buildBrief_(data);
+  // Best-effort AI overview (4–5 bullets, scoped to this window). Never let a
+  // key/timeout problem fail the pull — the dashboard falls back to the
+  // deterministic read-out when this is absent.
+  data.aiOverview = null;
+  try {
+    if (CONFIG.ANTHROPIC_API_KEY) data.aiOverview = generateOverview_(data);
+  } catch (e) {
+    log_('AI overview', 'skipped — ' + String(e && e.message || e).slice(0, 160));
+  }
 
   log_('Done', Math.round((new Date().getTime() - STARTED_AT) / 1000) + 's');
   return data;
+}
+
+/**
+ * A tight 4–5 bullet executive overview of the window, written by Claude from a
+ * compact numeric summary (not the whole payload). Returns { bullets: [...] }.
+ */
+function generateOverview_(data) {
+  var t = data.totals || {};
+  var ri = data.realImpact || {};
+  var fn = data.funnel || {};
+  var ads = (data.ads || []).slice().sort(function(a, b) {
+    return (Number(b.orderValue) || 0) - (Number(a.orderValue) || 0);
+  });
+  function line(a) {
+    return '- "' + (a.name || 'ad') + '" (' + (a.adGroup || '') + '): $' +
+      Math.round(a.cost || 0) + ' spend, ' + Math.round(a.orders || 0) +
+      ' purchases, $' + Math.round(a.orderValue || 0) + ' revenue, ROAS ' +
+      (a.cost ? ((a.orderValue || 0) / a.cost).toFixed(2) : '0') + 'x';
+  }
+  var top = ads.slice(0, 5).map(line).join('\n');
+  var losers = ads.filter(function(a) {
+    return (a.cost || 0) >= 50 && (Number(a.purchaseRoas) || 0) < 1;
+  }).slice(0, 5).map(line).join('\n');
+  var cur = (data.account && data.account.currency) || '';
+  var summary = [
+    'Account: ' + ((data.account || {}).name || ''),
+    'Window: ' + ((data.account || {}).start || '') + ' to ' +
+      ((data.account || {}).end || '') + ' (' + CONFIG.LAST_N_DAYS + ' days), ' +
+      'currency ' + cur,
+    'Only enabled campaigns: ' + (CONFIG.INCLUDE_PAUSED ? 'no (incl. paused)' :
+      'yes'),
+    'Spend: ' + Math.round(t.cost || 0),
+    'Real purchases (incl. view-through): ' + Math.round(ri.orders || 0) +
+      ', of which view-through: ' + Math.round(ri.viewThroughOrders || 0),
+    'Purchase revenue: ' + Math.round(ri.revenue || 0) +
+      ', ROAS: ' + (Number(ri.roas) || 0).toFixed(2) + 'x, cost/purchase: ' +
+      Math.round(ri.cpo || 0),
+    'Begin-checkouts: ' + Math.round(fn.checkout || 0) +
+      ', add-to-carts: ' + Math.round(fn.atc || 0),
+    'Blended clicks: ' + Math.round(t.clicks || 0) + ', CTR: ' +
+      ((Number(t.ctr) || 0) * 100).toFixed(1) + '%',
+    '',
+    'Top creatives by revenue:', top || '(none)',
+    '',
+    'Money-losing creatives (spend >= 50, ROAS < 1):', losers || '(none)'
+  ].join('\n');
+
+  var system = 'You are a senior paid-media strategist at Lockhern Digital ' +
+    'writing the executive overview of a Google Demand Gen account for the ' +
+    'client. Use ONLY the numbers given. Be specific and quantified, plain and ' +
+    'confident, no fluff, no hedging, no emojis. Each bullet one sentence. ' +
+    'Lead with the real purchase result (ROAS/CPO on the purchase action, not ' +
+    'blended conversions). Call out the clearest winner and the clearest waste, ' +
+    'and end with the single most important next move. Return 4 to 5 bullets.';
+  var schema = {
+    type: 'object', additionalProperties: false,
+    properties: {
+      bullets: { type: 'array', minItems: 4, maxItems: 5,
+        items: { type: 'string' } }
+    },
+    required: ['bullets']
+  };
+  var res = callClaude_(system, summary, schema);
+  return { bullets: (res && res.bullets) || [] };
 }
 
 /** Which accounts already have a cached payload, for the dashboard picker. */
@@ -2781,12 +2862,17 @@ function buildDateRange_() {
   var day = 24 * 60 * 60 * 1000;
   var end = new Date(new Date().getTime() - day);
   var start = new Date(end.getTime() - (CONFIG.LAST_N_DAYS - 1) * day);
+  // When only enabled campaigns are wanted, this clause rides along on every
+  // pull (they all filter DGEN AND <this>). campaign.status is filterable on
+  // every Demand Gen report, so it is safe to append globally.
+  var statusClause = CONFIG.INCLUDE_PAUSED ? '' :
+      " AND campaign.status = 'ENABLED'";
 
   var range = {
     start: fmtDate_(start, tz),
     end: fmtDate_(end, tz),
     current: "segments.date BETWEEN '" + fmtDate_(start, tz) + "' AND '" +
-        fmtDate_(end, tz) + "'"
+        fmtDate_(end, tz) + "'" + statusClause
   };
 
   if (CONFIG.COMPARE_PRIOR_PERIOD) {
@@ -2795,7 +2881,7 @@ function buildDateRange_() {
     range.priorStart = fmtDate_(priorStart, tz);
     range.priorEnd = fmtDate_(priorEnd, tz);
     range.prior = "segments.date BETWEEN '" + range.priorStart + "' AND '" +
-        range.priorEnd + "'";
+        range.priorEnd + "'" + statusClause;
   }
   return range;
 }
@@ -4044,7 +4130,7 @@ function saveSetting_(key, value) {
  *
  * @return {Object} {ok, days, start, end, error}
  */
-function repullAccountDays(accountId, days) {
+function repullAccountDays(accountId, days, includePaused) {
   try {
     ensureAccountContext_(accountId);
     var n = Math.round(Number(days) || 0);
@@ -4053,13 +4139,148 @@ function repullAccountDays(accountId, days) {
     }
     CONFIG.LAST_N_DAYS = n;
     saveSetting_('Days to report', n);
+    if (includePaused !== undefined && includePaused !== null) {
+      CONFIG.INCLUDE_PAUSED = !!includePaused;
+      saveSetting_('Include paused campaigns', CONFIG.INCLUDE_PAUSED ? 'TRUE' :
+          'FALSE');
+    }
     var data = auditAccount_(digits_(accountId));
     savePayload_(data);
-    return { ok: true, days: n,
+    return { ok: true, days: n, includePaused: CONFIG.INCLUDE_PAUSED,
              start: data.account.start, end: data.account.end };
   } catch (e) {
     return { ok: false, error: String(e && e.message || e) };
   }
+}
+
+/**
+ * Return one account's cached payload as a parsed object, so the dashboard can
+ * refresh in place after a re-pull without a full page reload (the sandboxed
+ * iframe cannot reliably navigate its top window).
+ */
+function getPayload(accountId) {
+  try {
+    var raw = readPayload_(digits_(accountId));
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Discover the accounts this tool can audit and cache them on an "Accounts" tab.
+ * Under a manager (MCC) it lists every child account via customer_client; with
+ * no manager it falls back to the directly-accessible customers. Returns
+ * {ok, accounts:[{id,name,currency,status}], error}.
+ */
+function discoverAccounts() {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    ['DEVELOPER_TOKEN', 'LOGIN_CUSTOMER_ID'].forEach(function(k) {
+      var v = props.getProperty(k);
+      if (v) CONFIG[k] = String(v).trim();
+    });
+    // Settings-tab manager id as a fallback.
+    if (!CONFIG.LOGIN_CUSTOMER_ID) {
+      var mgr = readSettingRaw_('manager (mcc) customer id');
+      if (mgr) CONFIG.LOGIN_CUSTOMER_ID = digits_(mgr);
+    }
+    if (!CONFIG.DEVELOPER_TOKEN) {
+      return { ok: false, error: 'No developer token in Script Properties.' };
+    }
+    var token = ScriptApp.getOAuthToken();
+    var accounts = [];
+
+    if (CONFIG.LOGIN_CUSTOMER_ID) {
+      var mgrId = digits_(CONFIG.LOGIN_CUSTOMER_ID);
+      var resp = UrlFetchApp.fetch('https://googleads.googleapis.com/' +
+          CONFIG.API_VERSION + '/customers/' + mgrId + '/googleAds:search', {
+        method: 'post', contentType: 'application/json',
+        headers: { Authorization: 'Bearer ' + token,
+                   'developer-token': CONFIG.DEVELOPER_TOKEN,
+                   'login-customer-id': mgrId },
+        payload: JSON.stringify({ query:
+          'SELECT customer_client.id, customer_client.descriptive_name, ' +
+          'customer_client.currency_code, customer_client.status, ' +
+          'customer_client.manager, customer_client.level ' +
+          'FROM customer_client WHERE customer_client.status = "ENABLED"' }),
+        muteHttpExceptions: true });
+      if (resp.getResponseCode() !== 200) {
+        return { ok: false, error: describeError_(resp.getResponseCode(),
+            resp.getContentText()) };
+      }
+      var rows = JSON.parse(resp.getContentText()).results || [];
+      rows.forEach(function(r) {
+        var c = r.customerClient || {};
+        if (c.manager) return;                 // skip manager accounts
+        if (digits_(String(c.id)) === mgrId) return;
+        accounts.push({ id: digits_(String(c.id)),
+          name: c.descriptiveName || formatId_(String(c.id)),
+          currency: c.currencyCode || '', status: c.status || '' });
+      });
+    } else {
+      var accResp = UrlFetchApp.fetch('https://googleads.googleapis.com/' +
+          CONFIG.API_VERSION + '/customers:listAccessibleCustomers', {
+        headers: { Authorization: 'Bearer ' + token,
+                   'developer-token': CONFIG.DEVELOPER_TOKEN },
+        muteHttpExceptions: true });
+      if (accResp.getResponseCode() !== 200) {
+        return { ok: false, error: describeError_(accResp.getResponseCode(),
+            accResp.getContentText()) };
+      }
+      var names = JSON.parse(accResp.getContentText()).resourceNames || [];
+      names.forEach(function(nm) {
+        var id = digits_(nm.split('/').pop());
+        var name = id;
+        try {
+          var one = UrlFetchApp.fetch('https://googleads.googleapis.com/' +
+            CONFIG.API_VERSION + '/customers/' + id + '/googleAds:search', {
+            method: 'post', contentType: 'application/json',
+            headers: { Authorization: 'Bearer ' + token,
+                       'developer-token': CONFIG.DEVELOPER_TOKEN },
+            payload: JSON.stringify({ query: 'SELECT customer.descriptive_name, ' +
+              'customer.currency_code, customer.manager FROM customer LIMIT 1' }),
+            muteHttpExceptions: true });
+          if (one.getResponseCode() === 200) {
+            var c = ((JSON.parse(one.getContentText()).results || [])[0] || {})
+                .customer || {};
+            if (c.manager) return;
+            name = c.descriptiveName || id;
+            accounts.push({ id: id, name: name,
+              currency: c.currencyCode || '', status: 'ENABLED' });
+          }
+        } catch (e) { /* skip unreadable */ }
+      });
+    }
+
+    accounts.sort(function(a, b) {
+      return String(a.name).toLowerCase() < String(b.name).toLowerCase() ? -1 : 1;
+    });
+    saveAccountsSheet_(accounts);
+    return { ok: true, accounts: accounts };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e) };
+  }
+}
+
+/** Write discovered accounts to an "Accounts" tab so they are pickable there. */
+function saveAccountsSheet_(accounts) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) return;
+  var sheet = ss.getSheetByName('Accounts');
+  if (!sheet) sheet = ss.insertSheet('Accounts');
+  sheet.clear();
+  sheet.getRange(1, 1, 1, 4)
+      .setValues([['Account name', 'Customer ID', 'Currency', 'Status']])
+      .setFontWeight('bold');
+  sheet.setFrozenRows(1);
+  if (accounts.length) {
+    sheet.getRange(2, 1, accounts.length, 4).setValues(accounts.map(function(a) {
+      return [a.name, formatId_(a.id), a.currency, a.status];
+    }));
+  }
+  sheet.setColumnWidth(1, 320);
+  sheet.setColumnWidth(2, 140);
 }
 
 /**
@@ -4080,6 +4301,9 @@ function ensureAccountContext_(customerId) {
     sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues()
         .forEach(function(row) { map[String(row[0]).trim().toLowerCase()] = row[1]; });
     if (map['days to report']) CONFIG.LAST_N_DAYS = Number(map['days to report']);
+    if (map.hasOwnProperty('include paused campaigns')) {
+      CONFIG.INCLUDE_PAUSED = truthy_(map['include paused campaigns'], true);
+    }
     if (map['google ads api version']) {
       CONFIG.API_VERSION = String(map['google ads api version']).trim();
     }
@@ -7236,6 +7460,7 @@ function savePayload_(data) {
     funnelActions: data.funnelActions || null,
     funnel: data.funnel || null,
     realImpact: data.realImpact || null,
+    aiOverview: data.aiOverview || null,
     conversionActions: data.conversionActions || [],
     surfaceMix: data.surfaceMix || [],
     deviceMix: data.deviceMix || [],
