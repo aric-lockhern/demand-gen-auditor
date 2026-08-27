@@ -923,6 +923,34 @@ function cachedAccounts_() {
   }).filter(Boolean);
 }
 
+/**
+ * RECOVERY: run this from the Apps Script editor (Run menu) if the web app will
+ * not load. It clears the stored AI-overview properties and re-pulls every
+ * account that has a cached payload, writing a clean payload for each — fixing a
+ * cache left in a bad state. Safe to run any time.
+ */
+function recover() {
+  var props = PropertiesService.getScriptProperties();
+  var all = props.getProperties();
+  Object.keys(all).forEach(function(k) {
+    if (k.indexOf('overview_') === 0) props.deleteProperty(k);
+  });
+  var accounts = cachedAccounts_();
+  Logger.log('Recovering ' + accounts.length + ' account(s)…');
+  accounts.forEach(function(a) {
+    try {
+      ensureAccountContext_(a.id);
+      var data = auditAccount_(digits_(a.id));
+      savePayload_(data);
+      Logger.log('  ok: ' + a.name);
+    } catch (e) {
+      Logger.log('  FAILED ' + a.name + ': ' + (e && e.message || e));
+    }
+  });
+  Logger.log('Recovery done. Reload the web app (a hard refresh / incognito).');
+  return accounts.length;
+}
+
 /** Run once. Creates a daily 6am refresh and forces the consent screen. */
 function installTrigger() {
   ScriptApp.getProjectTriggers().forEach(function(trigger) {
