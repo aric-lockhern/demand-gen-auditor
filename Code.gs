@@ -282,6 +282,13 @@ function dataUri_(file) {
  */
 function brandLogos_() {
   if (LOGO_CACHE_) return LOGO_CACHE_;
+  // Cross-execution cache so doGet doesn't read Drive + base64-encode the logos
+  // on every single page load (that ran on each request and, under load, piled
+  // up). CacheService is per-key ~100KB, so only cache when the payload fits.
+  try {
+    var cached = CacheService.getScriptCache().get('brandLogos');
+    if (cached) { LOGO_CACHE_ = JSON.parse(cached); return LOGO_CACHE_; }
+  } catch (e) { /* cache miss / unavailable */ }
   var out = { logoColor: '', logoWhite: '', logoMark: '' };
   // Fall back to the code default so logos resolve even before the Settings row
   // is added. The Settings value, when present, still wins.
@@ -315,6 +322,13 @@ function brandLogos_() {
     }
   }
   LOGO_CACHE_ = out;
+  try {
+    var enc = JSON.stringify(out);
+    // CacheService caps a value near 100KB; skip caching oversized logos.
+    if (enc.length < 95000) {
+      CacheService.getScriptCache().put('brandLogos', enc, 21600); // 6h
+    }
+  } catch (e) { /* non-fatal */ }
   return out;
 }
 
@@ -598,13 +612,17 @@ function doGet(e) {
   template.reportMode = (reportParam === '1' || reportParam === 'report' ||
       reportParam === 'client') ? 'true' : 'false';
   // Escape "<" so ad copy containing markup cannot close the script tag.
-  // Validate the cached JSON first: a truncated/corrupt payload injected raw
-  // would be a syntax error in the page script and blank the whole dashboard.
+  // Cheap truncation check (NOT a full JSON.parse, which on a multi-MB payload
+  // added seconds to every load): a complete object starts with { and ends with
+  // }. A truncated cache fails this and falls back to the empty state so the
+  // page still loads instead of a syntax error blanking it.
   var rawPayload = (chosen && readPayload_(chosen)) || 'null';
-  try {
-    if (rawPayload !== 'null') JSON.parse(rawPayload);
-  } catch (pErr) {
-    rawPayload = 'null';   // fall back to the empty state; the page still loads
+  if (rawPayload !== 'null') {
+    var trimmed = rawPayload.replace(/^\s+|\s+$/g, '');
+    if (trimmed.charAt(0) !== '{' ||
+        trimmed.charAt(trimmed.length - 1) !== '}') {
+      rawPayload = 'null';
+    }
   }
   template.payload = rawPayload.replace(/</g, '\\u003c');
   // The AI overview lives in its own small store (a Script Property), never in
