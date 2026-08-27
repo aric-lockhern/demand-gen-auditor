@@ -775,15 +775,9 @@ function auditAccount_(customerId) {
   };
   data.runLog = RUN_LOG.slice();
   data.brief = buildBrief_(data);
-  // Best-effort AI overview (4–5 bullets, scoped to this window). Never let a
-  // key/timeout problem fail the pull — the dashboard falls back to the
-  // deterministic read-out when this is absent.
+  // The AI overview is generated lazily from the dashboard (regenerateOverview),
+  // NOT during the pull — a blocking Claude call was making every audit slow.
   data.aiOverview = null;
-  try {
-    if (CONFIG.ANTHROPIC_API_KEY) data.aiOverview = generateOverview_(data);
-  } catch (e) {
-    log_('AI overview', 'skipped — ' + String(e && e.message || e).slice(0, 160));
-  }
 
   log_('Done', Math.round((new Date().getTime() - STARTED_AT) / 1000) + 's');
   return data;
@@ -849,7 +843,9 @@ function generateOverview_(data) {
     },
     required: ['bullets']
   };
-  var res = callClaude_(system, summary, schema);
+  // Small, fast call — it is only 4–5 bullets, so cap tokens and effort low.
+  var res = callClaude_(system, summary, schema,
+      { maxTokens: 1200, effort: 'low' });
   return { bullets: (res && res.bullets) || [] };
 }
 
@@ -5129,17 +5125,18 @@ function loadAiConfig_() {
  * parsed object, or throws a readable error. Raw HTTP (Apps Script has no SDK);
  * scope script.external_request is already granted.
  */
-function callClaude_(system, userText, schema) {
+function callClaude_(system, userText, schema, opts) {
   if (!CONFIG.ANTHROPIC_API_KEY) {
     throw new Error('No Anthropic API key. Add ANTHROPIC_API_KEY under Project ' +
         'Settings > Script Properties (your key from console.anthropic.com), ' +
         'then try again.');
   }
+  opts = opts || {};
   var body = {
-    model: CONFIG.AI_MODEL || 'claude-opus-5',
-    max_tokens: CONFIG.AI_MAX_TOKENS || 20000,
+    model: opts.model || CONFIG.AI_MODEL || 'claude-opus-5',
+    max_tokens: opts.maxTokens || CONFIG.AI_MAX_TOKENS || 20000,
     output_config: {
-      effort: 'medium',
+      effort: opts.effort || 'medium',
       format: { type: 'json_schema', schema: schema }
     },
     system: system,

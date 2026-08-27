@@ -1192,6 +1192,9 @@ var PAUSE_MIN_SPEND = 50;
 // The last batch of ads paused live, so a one-click Undo can re-enable exactly
 // those. [{id, name}]
 var LAST_PAUSED = [];
+// Whether we've already kicked off the lazy AI-overview generation this session,
+// so re-renders don't fire it repeatedly.
+var OVERVIEW_TRIED = false;
 
 function money(v) {
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: CUR,
@@ -2447,29 +2450,48 @@ function bindClientUpdate() {
   };
 
   var regen = document.getElementById('cuRegen');
-  if (regen) regen.onclick = function() {
-    var list = document.getElementById('cuOvList');
-    regen.disabled = true; regen.textContent = 'Writing…';
-    if (list) list.innerHTML = '<li>Generating…</li>';
-    google.script.run
-      .withSuccessHandler(function(res) {
-        regen.disabled = false; regen.textContent = '↻ Regenerate';
-        if (res && res.ok) {
-          DATA.aiOverview = { bullets: res.bullets || [] };
-          drawReadout();
-          render();  // re-render the report with the fresh overview
-        } else {
-          if (list) list.outerHTML = '<div class="cu-none" id="cuOvList">' +
-            esc((res && res.error) || 'Could not generate.') + '</div>';
-        }
-      })
-      .withFailureHandler(function(e) {
-        regen.disabled = false; regen.textContent = '↻ Regenerate';
-        if (list) list.outerHTML = '<div class="cu-none" id="cuOvList">' +
-          esc('Failed: ' + (e && e.message || e)) + '</div>';
-      })
-      .regenerateOverview(CURRENT_ACCOUNT);
-  };
+  if (regen) regen.onclick = function() { fetchOverview(true); };
+
+  // Lazily generate the overview once on load if it isn't cached yet — keeps the
+  // page fast (the pull no longer blocks on Claude) while it still fills in.
+  var hasOv = DATA.aiOverview && DATA.aiOverview.bullets &&
+      DATA.aiOverview.bullets.length;
+  if (!REPORT_MODE && !hasOv && !OVERVIEW_TRIED) {
+    OVERVIEW_TRIED = true;
+    fetchOverview(false);
+  }
+}
+
+// Generate/refresh the AI overview and drop it into the report in place.
+function fetchOverview(manual) {
+  var list = document.getElementById('cuOvList');
+  var regen = document.getElementById('cuRegen');
+  if (regen) { regen.disabled = true; regen.textContent = 'Writing…'; }
+  if (list) list.innerHTML = manual ? '<li>Generating…</li>'
+      : '<li class="cu-ov-gen">Writing the overview…</li>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (regen) { regen.disabled = false; regen.textContent = '↻ Regenerate'; }
+      var el = document.getElementById('cuOvList');
+      if (res && res.ok && (res.bullets || []).length) {
+        DATA.aiOverview = { bullets: res.bullets };
+        if (el) el.outerHTML = '<ul class="cu-ov" id="cuOvList">' +
+          res.bullets.map(function(b) {
+            return '<li>' + esc(String(b)).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>') +
+              '</li>'; }).join('') + '</ul>';
+        drawReadout();
+      } else if (el) {
+        el.outerHTML = '<div class="cu-none" id="cuOvList">' +
+          esc((res && res.error) || 'Could not generate the overview.') + '</div>';
+      }
+    })
+    .withFailureHandler(function(e) {
+      if (regen) { regen.disabled = false; regen.textContent = '↻ Regenerate'; }
+      var el = document.getElementById('cuOvList');
+      if (el) el.outerHTML = '<div class="cu-none" id="cuOvList">' +
+        esc('Overview unavailable: ' + (e && e.message || e)) + '</div>';
+    })
+    .regenerateOverview(CURRENT_ACCOUNT);
 }
 
 // --- KPIs -----------------------------------------------------------------
