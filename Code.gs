@@ -598,7 +598,18 @@ function doGet(e) {
   template.reportMode = (reportParam === '1' || reportParam === 'report' ||
       reportParam === 'client') ? 'true' : 'false';
   // Escape "<" so ad copy containing markup cannot close the script tag.
-  template.payload = ((chosen && readPayload_(chosen)) || 'null')
+  // Validate the cached JSON first: a truncated/corrupt payload injected raw
+  // would be a syntax error in the page script and blank the whole dashboard.
+  var rawPayload = (chosen && readPayload_(chosen)) || 'null';
+  try {
+    if (rawPayload !== 'null') JSON.parse(rawPayload);
+  } catch (pErr) {
+    rawPayload = 'null';   // fall back to the empty state; the page still loads
+  }
+  template.payload = rawPayload.replace(/</g, '\\u003c');
+  // The AI overview lives in its own small store (a Script Property), never in
+  // the big chunked payload — so regenerating it can't corrupt the payload.
+  template.aiOverview = (chosen ? (readOverview_(chosen) || 'null') : 'null')
       .replace(/</g, '\\u003c');
   template.labels = (readLabels_() || '{}').replace(/</g, '\\u003c');
   template.canLabel = readSetting_('allow starring in dashboard', true)
@@ -873,12 +884,30 @@ function regenerateOverview(accountId) {
     if (d) CONFIG.LAST_N_DAYS = d;
     if (data.account) CONFIG.INCLUDE_PAUSED = data.account.includePaused !== false;
     var overview = generateOverview_(data);
-    data.aiOverview = overview;
-    savePayload_(data);
+    // Store in its OWN small Script Property — NOT by rewriting the big chunked
+    // payload, which risked corrupting it on concurrent/repeated saves.
+    saveOverview_(accountId, overview);
     return { ok: true, bullets: (overview && overview.bullets) || [] };
   } catch (e) {
     return { ok: false, error: String(e && e.message || e) };
   }
+}
+
+function overviewKey_(accountId) { return 'overview_' + digits_(String(accountId)); }
+
+function saveOverview_(accountId, overview) {
+  try {
+    PropertiesService.getScriptProperties()
+        .setProperty(overviewKey_(accountId), JSON.stringify(overview || null));
+  } catch (e) { /* property store full or unavailable; non-fatal */ }
+}
+
+/** The stored AI overview JSON string for an account, or null. */
+function readOverview_(accountId) {
+  try {
+    return PropertiesService.getScriptProperties()
+        .getProperty(overviewKey_(accountId)) || null;
+  } catch (e) { return null; }
 }
 
 /** Which accounts already have a cached payload, for the dashboard picker. */

@@ -1147,6 +1147,9 @@ var CURRENT_ACCOUNT = <?!= current ? current : '""' ?>;
 var BASE_URL = <?!= baseUrl ? baseUrl : '""' ?>;
 var BRAND = <?!= brand ? brand : '{}' ?>;
 var REPORT_MODE = <?!= reportMode ? reportMode : 'false' ?>;
+// AI overview injected fresh from its own small store (never the big payload).
+var INJ_OVERVIEW = <?!= aiOverview ? aiOverview : 'null' ?>;
+if (DATA && !DATA.aiOverview && INJ_OVERVIEW) DATA.aiOverview = INJ_OVERVIEW;
 // Manual setting overrides, keyed "<campaignId>|<field>" (asset toggles use
 // "<campaignId>|asset|<TYPE>"). Injected fresh each load, edited in the Settings
 // view, saved via google.script.run.saveOverride. Overrides win over the API.
@@ -1176,6 +1179,51 @@ if (!DATA) {
 }
 
 function start() {
+// No usable payload (never pulled, or the cache came back unreadable): render a
+// plain recovery message instead of blanking the page on DATA.account access.
+if (!DATA || !DATA.account) {
+  var root0 = document.getElementById('root');
+  if (root0) root0.innerHTML = '<div style="max-width:640px;margin:60px auto;' +
+    'font-family:system-ui,sans-serif;color:#0E0E0E">' +
+    '<h2 style="font-weight:700">No account data loaded</h2>' +
+    '<p style="color:#6B7A99;line-height:1.6">Either this account hasn’t been ' +
+    'pulled yet, or its cached data couldn’t be read. Re-pull it below, or open ' +
+    'a different account.</p>' +
+    (CURRENT_ACCOUNT ? '<p><button id="recoverPull" style="border:1px solid ' +
+      '#0E0E0E;background:#0E0E0E;color:#fff;border-radius:8px;padding:9px 16px;' +
+      'font-size:14px;font-weight:600;cursor:pointer">Re-pull this account ' +
+      '(90 days)</button> <span id="recoverState" style="color:#6B7A99;' +
+      'font-size:13px"></span></p>' : '') +
+    (ACCOUNTS && ACCOUNTS.length ? '<p style="color:#6B7A99">Other accounts: ' +
+      ACCOUNTS.map(function(a){ return '<a target="_top" href="' +
+        (BASE_URL || '') + '?account=' + encodeURIComponent(a.id) + '">' +
+        String(a.name || a.id).replace(/[<>&]/g,'') + '</a>'; }).join(' &middot; ') +
+      '</p>' : '');
+  var rp = document.getElementById('recoverPull');
+  if (rp) rp.onclick = function() {
+    var st = document.getElementById('recoverState');
+    rp.disabled = true; rp.textContent = 'Pulling…';
+    if (st) st.textContent = 'Running the pull, this can take a minute…';
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (res && res.ok) {
+          var u = (BASE_URL || '') + '?account=' +
+            encodeURIComponent(CURRENT_ACCOUNT);
+          if (st) st.textContent = 'Done. Reloading…';
+          (window.top || window).location.href = u;
+        } else {
+          rp.disabled = false; rp.textContent = 'Re-pull this account (90 days)';
+          if (st) st.textContent = (res && res.error) || 'Pull failed.';
+        }
+      })
+      .withFailureHandler(function(e) {
+        rp.disabled = false; rp.textContent = 'Re-pull this account (90 days)';
+        if (st) st.textContent = 'Pull failed: ' + (e && e.message || e);
+      })
+      .repullAccountDays(CURRENT_ACCOUNT, 90, true);
+  };
+  return;
+}
 var CUR = DATA.account.currency;
 var CHANNEL_FILTER = null;
 var MODE = 'conversions';
@@ -2451,15 +2499,6 @@ function bindClientUpdate() {
 
   var regen = document.getElementById('cuRegen');
   if (regen) regen.onclick = function() { fetchOverview(true); };
-
-  // Lazily generate the overview once on load if it isn't cached yet — keeps the
-  // page fast (the pull no longer blocks on Claude) while it still fills in.
-  var hasOv = DATA.aiOverview && DATA.aiOverview.bullets &&
-      DATA.aiOverview.bullets.length;
-  if (!REPORT_MODE && !hasOv && !OVERVIEW_TRIED) {
-    OVERVIEW_TRIED = true;
-    fetchOverview(false);
-  }
 }
 
 // Generate/refresh the AI overview and drop it into the report in place.
