@@ -611,20 +611,12 @@ function doGet(e) {
   var reportParam = e && e.parameter && (e.parameter.report || e.parameter.view);
   template.reportMode = (reportParam === '1' || reportParam === 'report' ||
       reportParam === 'client') ? 'true' : 'false';
-  // Escape "<" so ad copy containing markup cannot close the script tag.
-  // Cheap truncation check (NOT a full JSON.parse, which on a multi-MB payload
-  // added seconds to every load): a complete object starts with { and ends with
-  // }. A truncated cache fails this and falls back to the empty state so the
-  // page still loads instead of a syntax error blanking it.
-  var rawPayload = (chosen && readPayload_(chosen)) || 'null';
-  if (rawPayload !== 'null') {
-    var trimmed = rawPayload.replace(/^\s+|\s+$/g, '');
-    if (trimmed.charAt(0) !== '{' ||
-        trimmed.charAt(trimmed.length - 1) !== '}') {
-      rawPayload = 'null';
-    }
-  }
-  template.payload = rawPayload.replace(/</g, '\\u003c');
+  // Do NOT inject the payload into the template. Injecting a multi-MB string
+  // through HtmlService.evaluate() is what made doGet take minutes; the client
+  // fetches it via getPayload (a few seconds) right after the shell renders. The
+  // shell now returns almost instantly, so reloads no longer stack up.
+  template.payload = 'null';
+  template.deferPayload = chosen ? 'true' : 'false';
   // The AI overview lives in its own small store (a Script Property), never in
   // the big chunked payload — so regenerating it can't corrupt the payload.
   template.aiOverview = (chosen ? (readOverview_(chosen) || 'null') : 'null')

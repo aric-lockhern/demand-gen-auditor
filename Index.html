@@ -779,6 +779,12 @@
     padding: 56px; text-align: center; background: var(--card);
     border: 1px solid var(--rule); border-radius: 14px;
   }
+  .loadspin {
+    width: 34px; height: 34px; border-radius: 50%; margin: 0 auto;
+    border: 3px solid var(--rule); border-top-color: var(--accent);
+    animation: loadspin 0.8s linear infinite;
+  }
+  @keyframes loadspin { to { transform: rotate(360deg); } }
   .setup h2 {
     font-family: var(--display); margin: 0 0 8px; font-size: 22px;
     font-weight: 600; letter-spacing: -.005em;
@@ -1159,24 +1165,60 @@ var OVERRIDES = <?!= overrides ? overrides : '{}' ?>;
 // Fresh notes injected by doGet win over whatever was baked into the cached
 // payload, so a plain reload shows the latest saved edits (e.g. the client plan).
 var FRESH_NOTES = <?!= notes ? notes : '{}' ?>;
-var NOTES = (function() {
+var DEFER_PAYLOAD = <?!= deferPayload ? deferPayload : 'false' ?>;
+function computeNotes() {
   var base = (DATA && DATA.notes) || {};
   var out = {};
   for (var k in base) out[k] = base[k];
   for (var f in FRESH_NOTES) out[f] = FRESH_NOTES[f];
   return out;
-})();
+}
+var NOTES = computeNotes();
 var POV_TAGLINE = 'A full-funnel, creative-led approach to Demand Gen';
 
-if (!DATA) {
+// Boot. The payload is NOT injected into the page (that made doGet take
+// minutes); we fetch it here with getPayload — a fast call — while the shell
+// shows a loading state, then render.
+(function boot() {
+  if (DATA && DATA.account) { start(); return; }
+  if (!DEFER_PAYLOAD || !CURRENT_ACCOUNT) {
+    document.getElementById('root').innerHTML =
+        '<div class="setup"><h2>No data yet</h2><p>Run <b>setup</b> in the ' +
+        'Apps Script project, list your account IDs in the Settings tab, then ' +
+        'run <b>refresh</b>. This page reads the cached pull, so it stays fast ' +
+        'for whoever you share it with.</p></div>';
+    return;
+  }
   document.getElementById('root').innerHTML =
-      '<div class="setup"><h2>No data yet</h2><p>Run <b>setup</b> in the ' +
-      'Apps Script project, list your account IDs in the Settings tab, then ' +
-      'run <b>refresh</b>. This page reads the cached pull, so it stays fast ' +
-      'for whoever you share it with.</p></div>';
-} else {
-  start();
-}
+      '<div class="setup" style="text-align:center;padding-top:80px">' +
+      '<div class="loadspin"></div>' +
+      '<h2 style="font-weight:600;margin-top:18px">Loading your data…</h2>' +
+      '<p style="color:var(--muted)">Pulling the cached report. This takes a ' +
+      'few seconds.</p></div>';
+  google.script.run
+    .withSuccessHandler(function(p) {
+      DATA = p;
+      if (DATA && DATA.account) {
+        if (!DATA.aiOverview && INJ_OVERVIEW) DATA.aiOverview = INJ_OVERVIEW;
+        NOTES = computeNotes();
+        start();
+      } else {
+        document.getElementById('root').innerHTML =
+          '<div class="setup"><h2>No data for this account</h2><p>It hasn’t ' +
+          'been pulled yet, or the cache couldn’t be read. Re-pull it from the ' +
+          'Apps Script editor (<b>refresh</b> or <b>recover</b>), then reload.' +
+          '</p></div>';
+      }
+    })
+    .withFailureHandler(function(e) {
+      document.getElementById('root').innerHTML =
+        '<div class="setup"><h2>Could not load the data</h2><p style="color:' +
+        'var(--down)">' + String((e && e.message) || e).replace(/[<>&]/g, '') +
+        '</p><p>Reload to try again, or run <b>recover</b> in the Apps Script ' +
+        'editor.</p></div>';
+    })
+    .getPayload(CURRENT_ACCOUNT);
+})();
 
 function start() {
 // No usable payload (never pulled, or the cache came back unreadable): render a
