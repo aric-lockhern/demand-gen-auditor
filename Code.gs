@@ -859,15 +859,14 @@ function generateOverview_(data) {
   var schema = {
     type: 'object', additionalProperties: false,
     properties: {
-      bullets: { type: 'array', minItems: 4, maxItems: 5,
-        items: { type: 'string' } }
+      bullets: { type: 'array', items: { type: 'string' } }
     },
     required: ['bullets']
   };
   // Small, fast call — it is only 4–5 bullets, so cap tokens and effort low.
   var res = callClaude_(system, summary, schema,
       { maxTokens: 1200, effort: 'low' });
-  return { bullets: (res && res.bullets) || [] };
+  return { bullets: ((res && res.bullets) || []).slice(0, 5) };
 }
 
 /**
