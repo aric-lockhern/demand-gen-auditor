@@ -635,6 +635,11 @@ function doGet(e) {
   var freshNotes = {};
   try { freshNotes = readCommentary_(); } catch (eN) { freshNotes = {}; }
   template.notes = JSON.stringify(freshNotes).replace(/</g, '\\u003c');
+  // Who is signed in (the web app runs as the viewer), for the header and the
+  // onboarding. Empty if the identity is hidden.
+  var viewer = '';
+  try { viewer = Session.getActiveUser().getEmail() || ''; } catch (eV) {}
+  template.viewer = JSON.stringify(viewer).replace(/</g, '\\u003c');
 
   return template.evaluate()
       .setTitle('Demand Gen Audit')

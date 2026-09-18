@@ -48,6 +48,7 @@
     font-size: 12.5px; font-weight: 500; color: var(--muted);
     letter-spacing: .01em; margin-bottom: 5px;
   }
+  .kicker .viewer { color: var(--accent); font-weight: 600; }
   h1 {
     font-family: var(--display); font-size: clamp(30px, 4vw, 41px);
     font-weight: 600; letter-spacing: -.012em; margin: 0 0 6px;
@@ -1153,6 +1154,8 @@ var CURRENT_ACCOUNT = <?!= current ? current : '""' ?>;
 var BASE_URL = <?!= baseUrl ? baseUrl : '""' ?>;
 var BRAND = <?!= brand ? brand : '{}' ?>;
 var REPORT_MODE = <?!= reportMode ? reportMode : 'false' ?>;
+// The signed-in teammate (the app runs as whoever opens it).
+var VIEWER = <?!= viewer ? viewer : '""' ?>;
 // AI overview injected fresh from its own small store (never the big payload).
 var INJ_OVERVIEW = <?!= aiOverview ? aiOverview : 'null' ?>;
 if (DATA && !DATA.aiOverview && INJ_OVERVIEW) DATA.aiOverview = INJ_OVERVIEW;
@@ -1182,11 +1185,8 @@ var POV_TAGLINE = 'A full-funnel, creative-led approach to Demand Gen';
 (function boot() {
   if (DATA && DATA.account) { start(); return; }
   if (!DEFER_PAYLOAD || !CURRENT_ACCOUNT) {
-    document.getElementById('root').innerHTML =
-        '<div class="setup"><h2>No data yet</h2><p>Run <b>setup</b> in the ' +
-        'Apps Script project, list your account IDs in the Settings tab, then ' +
-        'run <b>refresh</b>. This page reads the cached pull, so it stays fast ' +
-        'for whoever you share it with.</p></div>';
+    // No account pulled yet for this viewer — show the connect-and-pull screen.
+    onboard();
     return;
   }
   document.getElementById('root').innerHTML =
@@ -1219,6 +1219,107 @@ var POV_TAGLINE = 'A full-funnel, creative-led approach to Demand Gen';
     })
     .getPayload(CURRENT_ACCOUNT);
 })();
+
+// --- first-run onboarding (self-contained; runs before start()) -----------
+// Shown to a signed-in teammate who has not pulled any account yet: find the
+// accounts they can access under the manager, pull one, and open it.
+function onbEsc_(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function(c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+  });
+}
+function onbUrl_(id) {
+  var b = (typeof BASE_URL !== 'undefined' && BASE_URL) ? BASE_URL : '';
+  return b + (b.indexOf('?') === -1 ? '?' : '&') + 'account=' +
+      encodeURIComponent(id);
+}
+function onboard() {
+  var root = document.getElementById('root');
+  var who = VIEWER ? 'Signed in as <b>' + onbEsc_(VIEWER) + '</b>' : '';
+  var logo = (BRAND && BRAND.logoColor)
+      ? '<img src="' + onbEsc_(BRAND.logoColor) + '" alt="Lockhern Digital" ' +
+        'style="height:30px">'
+      : '<div style="font-weight:700;font-size:18px">Lockhern Digital</div>';
+  root.innerHTML =
+    '<div style="max-width:620px;margin:40px auto">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;' +
+        'margin-bottom:22px">' + logo +
+        '<div style="font-size:12.5px;color:var(--muted)">' + who + '</div></div>' +
+      '<div class="setup" style="text-align:left">' +
+        '<h2>Connect your Google Ads</h2>' +
+        '<p style="color:var(--muted);margin-bottom:16px">Find the Demand Gen ' +
+        'accounts you can access, pull one, and its report opens. You only ' +
+        'need to do this once per account — after that anyone on the team can ' +
+        'open it instantly.</p>' +
+        '<button id="onbFind" class="pb-btn">Find my accounts</button>' +
+        '<div id="onbState" style="font-size:13px;color:var(--muted);' +
+        'margin-top:10px"></div>' +
+        '<div id="onbList" style="margin-top:14px"></div>' +
+      '</div></div>';
+  document.getElementById('onbFind').onclick = onbFind;
+}
+function onbFind() {
+  var btn = document.getElementById('onbFind');
+  var state = document.getElementById('onbState');
+  btn.disabled = true; btn.textContent = 'Finding…';
+  state.textContent = 'Reading the accounts you can access…';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false; btn.textContent = 'Find my accounts';
+      if (!res || !res.ok) {
+        state.textContent = (res && res.error) || 'Could not list accounts.';
+        return;
+      }
+      var list = res.accounts || [];
+      state.textContent = list.length + ' account' +
+        (list.length === 1 ? '' : 's') + ' you can audit:';
+      var cached = {};
+      (ACCOUNTS || []).forEach(function(a) { cached[String(a.id)] = true; });
+      document.getElementById('onbList').innerHTML = list.map(function(a) {
+        var right = cached[String(a.id)]
+          ? '<a class="disc-open" target="_top" href="' + onbUrl_(a.id) +
+            '">Open →</a>'
+          : '<button class="disc-audit" data-id="' + onbEsc_(String(a.id)) +
+            '" data-name="' + onbEsc_(a.name) + '">Pull</button>';
+        return '<div class="disc-row" data-id="' + onbEsc_(String(a.id)) + '">' +
+          '<div class="disc-nm">' + onbEsc_(a.name) + '<div class="disc-id">' +
+          onbEsc_(a.id) + (a.currency ? ' · ' + onbEsc_(a.currency) : '') +
+          '</div></div><div>' + right + '</div></div>';
+      }).join('');
+      var btns = document.querySelectorAll('#onbList .disc-audit');
+      for (var i = 0; i < btns.length; i++) btns[i].onclick = onbPull;
+    })
+    .withFailureHandler(function(e) {
+      btn.disabled = false; btn.textContent = 'Find my accounts';
+      state.textContent = 'Could not list accounts: ' + (e && e.message || e);
+    })
+    .discoverAccounts();
+}
+function onbPull() {
+  var id = this.getAttribute('data-id');
+  var name = this.getAttribute('data-name');
+  this.disabled = true; this.textContent = 'Pulling…';
+  var cell = this.parentNode;
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res && res.ok) {
+        cell.innerHTML = '<a class="disc-open" target="_top" href="' +
+          onbUrl_(id) + '">Open →</a>';
+      } else {
+        cell.innerHTML = '<button class="disc-audit">Retry</button>';
+        cell.firstChild.onclick = onbPull;
+        cell.firstChild.setAttribute('data-id', id);
+        cell.firstChild.setAttribute('data-name', name);
+      }
+    })
+    .withFailureHandler(function() {
+      cell.innerHTML = '<button class="disc-audit">Retry</button>';
+      cell.firstChild.onclick = onbPull;
+      cell.firstChild.setAttribute('data-id', id);
+      cell.firstChild.setAttribute('data-name', name);
+    })
+    .repullAccountDays(id, 90, true);
+}
 
 function start() {
 // No usable payload (never pulled, or the cache came back unreadable): render a
@@ -1328,7 +1429,9 @@ function brandLogoHtml() {
 
 document.getElementById('root').innerHTML =
   '<header><div class="brandrow">' + brandLogoHtml() + '</div>' +
-    '<div class="kicker">Demand Gen audit</div>' +
+    '<div class="kicker">Demand Gen audit' +
+      (VIEWER ? ' · <span class="viewer">' + esc(VIEWER) + '</span>' : '') +
+      '</div>' +
     '<div class="titlerow"><h1>' + esc(DATA.account.name) + '</h1>' +
       (ACCOUNTS.length > 1
         ? '<select id="accountPicker" aria-label="Switch account">' +
