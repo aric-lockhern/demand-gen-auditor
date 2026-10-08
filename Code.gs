@@ -445,6 +445,7 @@ function onOpen() {
       .addItem('Build slide deck', 'buildDeck')
       .addSeparator()
       .addItem('Install daily refresh', 'installTrigger')
+      .addItem('Fast loading: set up', 'fastSetup')
       .addToUi();
 }
 
@@ -640,6 +641,12 @@ function doGet(e) {
   var viewer = '';
   try { viewer = Session.getActiveUser().getEmail() || ''; } catch (eV) {}
   template.viewer = JSON.stringify(viewer).replace(/</g, '\\u003c');
+  // Fast loading: the page reads from Netlify (Publish.gs). The web app runs as the
+  // viewer, so we can mint their signed session here and hand it over — the Netlify
+  // function verifies it against the published secret and the lockherndigital.com
+  // domain. No session (identity hidden) = the page just uses Apps Script, as before.
+  template.session = JSON.stringify(viewer ? mintSession_(viewer) : '').replace(/</g, '\\u003c');
+  template.fastApi = JSON.stringify(fastApiBase_()).replace(/</g, '\\u003c');
 
   return template.evaluate()
       .setTitle('Demand Gen Audit')
@@ -4250,6 +4257,8 @@ function repullAccountDays(accountId, days, includePaused) {
     }
     var data = auditAccount_(digits_(accountId));
     savePayload_(data);
+    // Push the fresh payload to the fast-loading cache at once (best-effort).
+    try { publishSoon_(digits_(accountId)); } catch (eP) {}
     return { ok: true, days: n, includePaused: CONFIG.INCLUDE_PAUSED,
              start: data.account.start, end: data.account.end };
   } catch (e) {
@@ -7605,7 +7614,10 @@ function savePayload_(data) {
   }
 
   // Row 1: account label for the picker. Row 2 onward: the JSON, chunked.
-  sheet.getRange(1, 1, 1, 2).setValues([['account', data.account.name]]);
+  // Row 1: label for the picker, plus a monotonic version cell so the fast-loading
+  // publisher (Publish.gs) can tell, with one cheap read, whether this account changed.
+  sheet.getRange(1, 1, 1, 3)
+      .setValues([['account', data.account.name, String(new Date().getTime())]]);
 
   var chunks = [];
   for (var i = 0; i < json.length; i += PAYLOAD_CHUNK) {
@@ -7630,6 +7642,15 @@ function readPayload_(customerId) {
 
   return sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues()
       .map(function(row) { return row[0]; }).join('');
+}
+
+/** The payload's version cell (row 1, col 3) — one read, for the fast-loading publisher. */
+function readPayloadVersion_(customerId) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) return '';
+  var sheet = ss.getSheetByName(PAYLOAD_PREFIX + digits_(customerId));
+  if (!sheet) return '';
+  return String(sheet.getRange(1, 3).getValue() || '');
 }
 
 function trim_(rows) {

@@ -1,0 +1,15 @@
+# Netlify hosts the fast READ API only (netlify/functions/api.mjs). The dashboard page itself stays on the
+# Apps Script web app (/exec); only the data read moves here, served from Netlify Blobs that Apps Script's
+# Publish.gs fills. `npm test` runs the fast-path unit/security tests, so a commit that fails them never
+# publishes the function.
+[build]
+  command = "npm test"
+  publish = "public"
+
+[functions]
+  # netlify/functions/api.mjs: the fast read API at /api and /api/ingest (see src apps-script Publish.gs).
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[build.environment]
+  NODE_VERSION = "22"

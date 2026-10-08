@@ -1,0 +1,16 @@
+{
+  "name": "demand-gen-auditor-fastapi",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Fast read path for the Demand Gen Auditor: Apps Script publishes each account's payload to Netlify Blobs; this serves the page's reads from a CDN instead of Google's slow web-app front end.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^10.7.13"
+  }
+}

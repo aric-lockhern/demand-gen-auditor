@@ -8,6 +8,7 @@ on:
     branches: [main, master, "claude/**"]
     paths:
       - "Code.gs"
+      - "Publish.gs"
       - "Index.html"
       - "appsscript.json"
       - ".claspignore"

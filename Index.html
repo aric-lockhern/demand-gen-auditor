@@ -1156,6 +1156,12 @@ var BRAND = <?!= brand ? brand : '{}' ?>;
 var REPORT_MODE = <?!= reportMode ? reportMode : 'false' ?>;
 // The signed-in teammate (the app runs as whoever opens it).
 var VIEWER = <?!= viewer ? viewer : '""' ?>;
+// Fast loading: the Netlify read API base and this viewer's signed session. When both are set the data
+// read goes to Netlify (fast, no Google 404s), falling back to Apps Script whenever the fast path can't
+// answer. Empty = the fast path is off; Apps Script serves the read as before.
+var FAST_API = <?!= fastApi ? fastApi : '""' ?>;
+var SESSION = <?!= session ? session : '""' ?>;
+var FAST_OFF = false;
 // AI overview injected fresh from its own small store (never the big payload).
 var INJ_OVERVIEW = <?!= aiOverview ? aiOverview : 'null' ?>;
 if (DATA && !DATA.aiOverview && INJ_OVERVIEW) DATA.aiOverview = INJ_OVERVIEW;
@@ -1193,32 +1199,73 @@ var POV_TAGLINE = 'A full-funnel, creative-led approach to Demand Gen';
       '<div class="setup" style="text-align:center;padding-top:80px">' +
       '<div class="loadspin"></div>' +
       '<h2 style="font-weight:600;margin-top:18px">Loading your data…</h2>' +
-      '<p style="color:var(--muted)">Pulling the cached report. This takes a ' +
-      'few seconds.</p></div>';
-  google.script.run
-    .withSuccessHandler(function(p) {
+      '<p style="color:var(--muted)" id="loadNote">Fetching the report.</p></div>';
+  loadPayload(function(p, err) {
+    if (p && p.account) {
       DATA = p;
-      if (DATA && DATA.account) {
-        if (!DATA.aiOverview && INJ_OVERVIEW) DATA.aiOverview = INJ_OVERVIEW;
-        NOTES = computeNotes();
-        start();
-      } else {
-        document.getElementById('root').innerHTML =
-          '<div class="setup"><h2>No data for this account</h2><p>It hasn’t ' +
-          'been pulled yet, or the cache couldn’t be read. Re-pull it from the ' +
-          'Apps Script editor (<b>refresh</b> or <b>recover</b>), then reload.' +
-          '</p></div>';
-      }
-    })
-    .withFailureHandler(function(e) {
+      if (!DATA.aiOverview && INJ_OVERVIEW) DATA.aiOverview = INJ_OVERVIEW;
+      NOTES = computeNotes();
+      start();
+    } else if (err) {
       document.getElementById('root').innerHTML =
         '<div class="setup"><h2>Could not load the data</h2><p style="color:' +
-        'var(--down)">' + String((e && e.message) || e).replace(/[<>&]/g, '') +
+        'var(--down)">' + String(err.message || err).replace(/[<>&]/g, '') +
         '</p><p>Reload to try again, or run <b>recover</b> in the Apps Script ' +
         'editor.</p></div>';
-    })
-    .getPayload(CURRENT_ACCOUNT);
+    } else {
+      document.getElementById('root').innerHTML =
+        '<div class="setup"><h2>No data for this account</h2><p>It hasn’t ' +
+        'been pulled yet, or the cache couldn’t be read. Re-pull it from the ' +
+        'Apps Script editor (<b>refresh</b> or <b>recover</b>), then reload.' +
+        '</p></div>';
+    }
+  });
 })();
+
+// Fetch the account payload: the fast Netlify path first (sub-second, no Google 404s), then Apps Script
+// with retries. cb(payload|null, error|null). The fast path answers {fallback} for anything it can't
+// vouch for (not set up, not published yet, session unknown) and we fall through to Apps Script, the
+// authority. A missing function (HTML/404/network) switches the fast path off for the rest of the visit.
+function loadPayload(cb) {
+  var slow = setTimeout(function() {
+    var n = document.getElementById('loadNote');
+    if (n) n.textContent = 'Google’s servers are slow right now. Still trying…';
+  }, 8000);
+  var done = function(p, err) { clearTimeout(slow); cb(p, err || null); };
+  if (FAST_API && SESSION && !FAST_OFF && CURRENT_ACCOUNT) {
+    var u = FAST_API.replace(/\/+$/, '') + '/api?api=payload&account=' +
+        encodeURIComponent(CURRENT_ACCOUNT) + '&key=' + encodeURIComponent(SESSION);
+    fetch(u, { cache: 'no-store' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(j) {
+        if (j && j.ok) { done(j.result); return; }
+        if (!j) FAST_OFF = true;              // no function here: don't try it again this visit
+        slowLoadPayload(done);                // fallback / unknown / not published -> Apps Script
+      })
+      .catch(function() { FAST_OFF = true; slowLoadPayload(done); });
+  } else {
+    slowLoadPayload(done);
+  }
+}
+// Apps Script read with retries: Google's web-app front end 404s intermittently, so up to 4 tries.
+function slowLoadPayload(done) {
+  var tries = 0;
+  (function attempt() {
+    tries++;
+    google.script.run
+      .withSuccessHandler(function(p) { done(p); })
+      .withFailureHandler(function(e) {
+        if (tries < 4) {
+          var n = document.getElementById('loadNote');
+          if (n) n.textContent = 'Google’s servers are slow right now. Still trying…';
+          setTimeout(attempt, 700 * tries);
+        } else {
+          done(null, e || new Error('Google’s servers did not answer.'));
+        }
+      })
+      .getPayload(CURRENT_ACCOUNT);
+  })();
+}
 
 // --- first-run onboarding (self-contained; runs before start()) -----------
 // Shown to a signed-in teammate who has not pulled any account yet: find the
